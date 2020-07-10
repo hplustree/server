@@ -5390,5 +5390,27 @@ ERROR HY000: Default/ignore value is not supported for such parameter usage
 EXECUTE IMMEDIATE 'SHOW DATABASES WHERE ?' USING 0;
 Database
 #
+# MDEV-15703: Crash in EXECUTE IMMEDIATE
+# 'CREATE OR REPLACE TABLE t1 (a INT DEFAULT ?)' USING DEFAULT
+#
+EXECUTE IMMEDIATE 'CREATE TABLE t1 (a INT DEFAULT ?)' USING IGNORE;
+ERROR HY000: Default/ignore value is not supported for such parameter usage
+EXECUTE IMMEDIATE 'CREATE TABLE t1 (a INT DEFAULT ?)' USING DEFAULT;
+ERROR HY000: Default/ignore value is not supported for such parameter usage
+EXECUTE IMMEDIATE 'BEGIN NOT ATOMIC DECLARE a INT DEFAULT ?; END' USING DEFAULT;
+ERROR HY000: Default/ignore value is not supported for such parameter usage
+EXECUTE IMMEDIATE 'BEGIN NOT ATOMIC DECLARE a INT DEFAULT ?; END' USING IGNORE;
+ERROR HY000: Default/ignore value is not supported for such parameter usage
+EXECUTE IMMEDIATE 'SELECT ? UNION SELECT 1' USING DEFAULT;
+ERROR HY000: Default/ignore value is not supported for such parameter usage
+EXECUTE IMMEDIATE 'SELECT ? UNION SELECT 1' USING IGNORE;
+ERROR HY000: Default/ignore value is not supported for such parameter usage
+CREATE PROCEDURE p(IN c INT) SET max_connections=100;
+EXECUTE IMMEDIATE 'CALL p(?)' USING DEFAULT;
+ERROR HY000: Default/ignore value is not supported for such parameter usage
+EXECUTE IMMEDIATE 'CALL p(?)' USING IGNORE;
+ERROR HY000: Default/ignore value is not supported for such parameter usage
+DROP PROCEDURE p;
+#
 # End of 10.2 tests
 #

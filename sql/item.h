@@ -706,6 +706,8 @@ protected:
                                          bool fixed_length,
                                          bool set_blob_packlength);
   Field *create_tmp_field(bool group, TABLE *table, uint convert_int_length);
+  virtual void raise_error_not_evaluable();
+
   /* Helper methods, to get an Item value from another Item */
   double val_real_from_item(Item *item)
   {
@@ -1308,6 +1310,24 @@ public:
       INSERT INTO t1 (vcol) VALUES (NULL)  -> ok
   */
   virtual bool vcol_assignment_allowed_value() const { return false; }
+  /*
+    Determines if the Item is an evaluable expression, that is
+    it can return a value, so we can call methods val_xxx(), get_date(), etc.
+    Most items are evaluable expressions.
+    Examples of non-evaluable expressions:
+    - Item_contextually_typed_value_specification (handling DEFAULT and IGNORE)
+    - Item_type_param bound to DEFAULT and IGNORE
+    We cannot call the mentioned methods for these Items,
+    their method implementations typically have DBUG_ASSERT(0).
+  */
+  virtual bool is_evaluable_expression() const { return true; }
+  bool check_is_evaluable_expression_or_error()
+  {
+    if (is_evaluable_expression())
+      return false; // Ok
+    raise_error_not_evaluable();
+    return true;    // Error
+  }
   /* cloning of constant items (0 if it is not const) */
   virtual Item *clone_item(THD *thd) { return 0; }
   virtual Item* build_clone(THD *thd, MEM_ROOT *mem_root) { return get_copy(thd, mem_root); }
@@ -1404,6 +1424,16 @@ public:
                      LOWEST_PRECEDENCE);
   }
   virtual void print(String *str, enum_query_type query_type);
+
+  class Print: public String
+  {
+  public:
+    Print(Item *item, enum_query_type type)
+    {
+      item->print(this, type);
+    }
+  };
+
   void print_item_w_name(String *str, enum_query_type query_type);
   void print_value(String *str);
 
@@ -3085,6 +3115,8 @@ public:
     }
   };
 
+  bool is_evaluable_expression() const;
+
   /*
     Used for bulk protocol only.
   */
@@ -3242,6 +3274,8 @@ public:
   virtual const Send_field *get_out_param_info() const;
 
   virtual void make_field(THD *thd, Send_field *field);
+
+  virtual void raise_error_not_evaluable();
 
 private:
   Send_field *m_out_param_info;

@@ -84,6 +84,15 @@ void item_init(void)
 }
 
 
+void Item::raise_error_not_evaluable()
+{
+  Item::Print tmp(this, QT_ORDINARY);
+  // TODO-10.5: add an error message to errmsg-utf8.txt
+  my_printf_error(ER_UNKNOWN_ERROR,
+                  "'%s' is not allowed in this context", MYF(0), tmp.ptr());
+}
+
+
 void Item::push_note_converted_to_negative_complement(THD *thd)
 {
   push_warning(thd, Sql_condition::WARN_LEVEL_NOTE, ER_UNKNOWN_ERROR,
@@ -3952,12 +3961,38 @@ int Item_param::save_in_field(Field *field, bool no_conversions)
 }
 
 
+bool Item_param::is_evaluable_expression() const
+{
+  switch (state) {
+
+  case INT_VALUE:
+  case REAL_VALUE:
+  case STRING_VALUE:
+  case TIME_VALUE:
+  case LONG_DATA_VALUE:
+  case DECIMAL_VALUE:
+  case NULL_VALUE:
+    return true;
+  case NO_VALUE:
+    return true; // Not assigned yet, so we don't know
+  case IGNORE_VALUE:
+  case DEFAULT_VALUE:
+    break;
+  }
+  return false;
+}
+
+
 void Item_param::invalid_default_param() const
 {
   my_message(ER_INVALID_DEFAULT_PARAM,
              ER_THD(current_thd, ER_INVALID_DEFAULT_PARAM), MYF(0));
 }
 
+void Item_param::raise_error_not_evaluable()
+{
+  invalid_default_param();
+}
 
 bool Item_param::get_date(MYSQL_TIME *res, ulonglong fuzzydate)
 {
