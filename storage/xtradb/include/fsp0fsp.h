@@ -343,19 +343,17 @@ typedef	byte	fseg_inode_t;
 /*-------------------------------------*/
 #define	FSEG_ID			0	/* 8 bytes of segment id: if this is 0,
 					it means that the header is unused */
-#define FSEG_NOT_FULL_N_USED	8
-					/* number of used segment pages in
-					the FSEG_NOT_FULL list */
-#define	FSEG_FREE		12
-					/* list of free extents of this
-					segment */
-#define	FSEG_NOT_FULL		(12 + FLST_BASE_NODE_SIZE)
-					/* list of partially free extents */
-#define	FSEG_FULL		(12 + 2 * FLST_BASE_NODE_SIZE)
-					/* list of full extents */
-#define	FSEG_MAGIC_N		(12 + 3 * FLST_BASE_NODE_SIZE)
+#define FSEG_NEXT_FREE		8
+					/* Page offset of next free page in
+					extent list */
+#define	FSEG_FRAG_PAGE		12
+					/* list of free pages in extent list,
+					excludes first time unused pages in extent*/
+#define	FSEG_EXTENT		(12 + FLST_BASE_NODE_SIZE)
+					/* list of extents allocated to segment*/
+#define	FSEG_MAGIC_N		(12 + 2 * FLST_BASE_NODE_SIZE)
 					/* magic number used in debugging */
-#define	FSEG_FRAG_ARR		(16 + 3 * FLST_BASE_NODE_SIZE)
+#define	FSEG_FRAG_ARR		(16 + 2 * FLST_BASE_NODE_SIZE)
 					/* array of individual pages
 					belonging to this segment in fsp
 					fragment extent lists */
@@ -367,7 +365,7 @@ typedef	byte	fseg_inode_t;
 					means that the slot is not in use */
 /*-------------------------------------*/
 #define FSEG_INODE_SIZE					\
-	(16 + 3 * FLST_BASE_NODE_SIZE			\
+	(16 + 2 * FLST_BASE_NODE_SIZE			\
 	 + FSEG_FRAG_ARR_N_SLOTS * FSEG_FRAG_SLOT_SIZE)
 
 #define FSP_SEG_INODES_PER_PAGE(zip_size)		\
