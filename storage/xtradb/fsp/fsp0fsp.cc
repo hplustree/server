@@ -2363,9 +2363,9 @@ fseg_alloc_free_page_low(
 					if could not be allocated */
 	xdes_t*		ret_descr;	/*!< the extent of the allocated page */
 	ibool		success;
-	ulint		n;
+	ulint		n, next_page_offset;
 
-	ut_ad((direction >= FSP_UP) && (direction <= FSP_NO_DIR));
+//	ut_ad((direction >= FSP_UP) && (direction <= FSP_NO_DIR));
 	ut_ad(mach_read_from_4(seg_inode + FSEG_MAGIC_N)
 	      == FSEG_MAGIC_N_VALUE);
 	ut_ad(!((page_offset(seg_inode) - FSEG_ARR_OFFSET) % FSEG_INODE_SIZE));
@@ -2417,74 +2417,16 @@ take_hinted_page:
 
 		xdes_set_state(ret_descr, XDES_FSEG, mtr);
 		mlog_write_ull(ret_descr + XDES_ID, seg_id, mtr);
-		flst_add_last(seg_inode + FSEG_FREE,
+		flst_add_last(seg_inode + FSEG_EXTENT,
 			      ret_descr + XDES_FLST_NODE, mtr);
 
-		/* Try to fill the segment free list */
-		fseg_fill_free_list(seg_inode, space, zip_size,
-				    hint + FSP_EXTENT_SIZE, mtr);
 		goto take_hinted_page;
 		/*-----------------------------------------------------------*/
-	} else if ((direction != FSP_NO_DIR)
-		   && ((reserved - used) < reserved / FSEG_FILLFACTOR)
-		   && (used >= FSEG_FRAG_LIMIT)
-		   && (!!(ret_descr
-			  = fseg_alloc_free_extent(seg_inode,
-						   space, zip_size, mtr)))) {
-
-		/* 3. We take any free extent (which was already assigned above
-		===============================================================
-		in the if-condition to ret_descr) and take the lowest or
-		========================================================
-		highest page in it, depending on the direction
-		==============================================*/
-		ret_page = xdes_get_offset(ret_descr);
-
-		if (direction == FSP_DOWN) {
-			ret_page += FSP_EXTENT_SIZE - 1;
-		}
-		/*-----------------------------------------------------------*/
-	} else if ((xdes_get_state(descr, mtr) == XDES_FSEG)
-		   && mach_read_from_8(descr + XDES_ID) == seg_id
-		   && (!xdes_is_full(descr, mtr))) {
-
-		/* 4. We can take the page from the same extent as the
-		======================================================
-		hinted page (and the extent already belongs to the
-		==================================================
-		segment)
-		========*/
-		ret_descr = descr;
-		ret_page = xdes_get_offset(ret_descr)
-			+ xdes_find_bit(ret_descr, XDES_FREE_BIT, TRUE,
-					hint % FSP_EXTENT_SIZE, mtr);
-		/*-----------------------------------------------------------*/
-	} else if (reserved - used > 0) {
-		/* 5. We take any unused page from the segment
-		==============================================*/
-		fil_addr_t	first;
-
-		if (flst_get_len(seg_inode + FSEG_NOT_FULL, mtr) > 0) {
-			first = flst_get_first(seg_inode + FSEG_NOT_FULL,
-					       mtr);
-		} else if (flst_get_len(seg_inode + FSEG_FREE, mtr) > 0) {
-			first = flst_get_first(seg_inode + FSEG_FREE, mtr);
-		} else {
-			ut_error;
-			return(NULL);
-		}
-
-		ret_descr = xdes_lst_get_descriptor(space, zip_size,
-						    first, mtr);
-		ret_page = xdes_get_offset(ret_descr)
-			+ xdes_find_bit(ret_descr, XDES_FREE_BIT, TRUE,
-					0, mtr);
-		/*-----------------------------------------------------------*/
 	} else if (used < FSEG_FRAG_LIMIT) {
-		/* 6. We allocate an individual page from the space
+		/* 3. We allocate an individual page from the space
 		===================================================*/
 		buf_block_t* block = fsp_alloc_free_page(
-			space, zip_size, hint, mtr, init_mtr);
+		    space, zip_size, hint, mtr, init_mtr);
 
 		if (block != NULL) {
 			/* Put the page in the fragment page array of the
@@ -2493,16 +2435,69 @@ take_hinted_page:
 			ut_a(n != ULINT_UNDEFINED);
 
 			fseg_set_nth_frag_page_no(
-				seg_inode, n, buf_block_get_page_no(block),
-				mtr);
+			    seg_inode, n, buf_block_get_page_no(block),
+			    mtr);
 		}
 
 		/* fsp_alloc_free_page() invoked fsp_init_file_page()
 		already. */
 		return(block);
 		/*-----------------------------------------------------------*/
+	} else if ((reserved - used > 0) &&
+		   (flst_get_len(seg_inode + FSEG_FRAG_PAGE, mtr) > 0)) {
+		/* 4. We take free page from the segment i.e.
+		 	first page from fragment page's list
+		==============================================*/
+		fil_addr_t	first;
+		buf_block_t* block;
+		buf_block_t* next_block;
+		page_t* page;
+		page_t* next_page;
+		ulint prev_page, next_page_no;
+
+		first = flst_get_first(seg_inode + FSEG_FRAG_PAGE,
+					       mtr);
+		ret_descr = xdes_lst_get_descriptor(space, zip_size,
+						    first, mtr);
+		ret_page = xdes_get_offset(ret_descr);
+
+		block = buf_page_get_gen(space, zip_size, ret_page,
+					RW_X_LATCH, NULL, BUF_GET,
+						   __FILE__, __LINE__, mtr);
+		page = buf_block_get_frame(block);
+		next_page_no = mach_read_from_4(page + FIL_PAGE_NEXT);
+		next_block = buf_page_get_gen(space, zip_size, next_page_no,
+					 RW_X_LATCH, NULL, BUF_GET,
+					 __FILE__, __LINE__, mtr);
+		next_page = buf_block_get_frame(next_block);
+		mlog_write_ulint(next_page + FIL_PAGE_PREV,
+				 FIL_NULL, MLOG_4BYTES, mtr);
+
+		mlog_write_ulint(page + FIL_PAGE_PREV,
+				 FIL_NULL, MLOG_4BYTES, mtr);
+		mlog_write_ulint(page + FIL_PAGE_NEXT,
+				 FIL_NULL, MLOG_4BYTES, mtr);
+		return (block);
+		/*-----------------------------------------------------------*/
+	}  else if (ulint page_no =
+		       mtr_read_ulint(seg_inode + FSEG_NEXT_FREE,
+				      MLOG_4BYTES, mtr) != FIL_NULL) {
+		/* 5. We take next page in extent
+		==============================================*/
+		ret_descr = xdes_get_descriptor_with_space_hdr(space_header,
+							       space,
+							       page_no, mtr);
+		if (ret_descr == NULL) {
+			ret_page = FIL_NULL;
+		}
+		else {
+			ret_page = page_no;
+			next_page_offset = page_no + 1;
+//			mlog_write_ulint(seg_inode + FSEG_NEXT_FREE, page_no + 1,
+//					 MLOG_4BYTES, mtr);
+		}
 	} else {
-		/* 7. We allocate a new extent and take its first page
+		/* 6. We allocate a new extent and take its first page
 		======================================================*/
 		ret_descr = fseg_alloc_free_extent(seg_inode,
 						   space, zip_size, mtr);
@@ -2511,8 +2506,132 @@ take_hinted_page:
 			ret_page = FIL_NULL;
 		} else {
 			ret_page = xdes_get_offset(ret_descr);
+			next_page_offset = ret_page + 1;
+//			mlog_write_ulint(seg_inode + FSEG_NEXT_FREE, ret_page + 1,
+//					 MLOG_4BYTES, mtr);
 		}
 	}
+
+
+//	if ((xdes_get_state(descr, mtr) == XDES_FSEG)
+//	    && mach_read_from_8(descr + XDES_ID) == seg_id
+//	    && (xdes_mtr_get_bit(descr, XDES_FREE_BIT,
+//				 hint % FSP_EXTENT_SIZE, mtr) == TRUE)) {
+//take_hinted_page:
+//		/* 1. We can take the hinted page
+//		=================================*/
+//		ret_descr = descr;
+//		ret_page = hint;
+//		/* Skip the check for extending the tablespace. If the
+//		page hint were not within the size of the tablespace,
+//		we would have got (descr == NULL) above and reset the hint. */
+//		goto got_hinted_page;
+//		/*-----------------------------------------------------------*/
+//	} else if (xdes_get_state(descr, mtr) == XDES_FREE
+//		   && reserved - used < reserved / FSEG_FILLFACTOR
+//		   && used >= FSEG_FRAG_LIMIT) {
+//
+//		/* 2. We allocate the free extent from space and can take
+//		=========================================================
+//		the hinted page
+//		===============*/
+//		ret_descr = fsp_alloc_free_extent(space, zip_size, hint, mtr);
+//
+//		ut_a(ret_descr == descr);
+//
+//		xdes_set_state(ret_descr, XDES_FSEG, mtr);
+//		mlog_write_ull(ret_descr + XDES_ID, seg_id, mtr);
+//		flst_add_last(seg_inode + FSEG_FREE,
+//			      ret_descr + XDES_FLST_NODE, mtr);
+//		goto take_hinted_page;
+//		/*-----------------------------------------------------------*/
+//	} else if (((reserved - used) < reserved / FSEG_FILLFACTOR)
+//		   && (used >= FSEG_FRAG_LIMIT)
+//		   && (!!(ret_descr
+//			  = fseg_alloc_free_extent(seg_inode,
+//						   space, zip_size, mtr)))) {
+//
+//		/* 3. We take any free extent (which was already assigned above
+//		===============================================================
+//		in the if-condition to ret_descr) and take the lowest or
+//		========================================================
+//		highest page in it, depending on the direction
+//		==============================================*/
+//		ret_page = xdes_get_offset(ret_descr);
+//
+//		if (direction == FSP_DOWN) {
+//			ret_page += FSP_EXTENT_SIZE - 1;
+//		}
+//		/*-----------------------------------------------------------*/
+//	} else if ((xdes_get_state(descr, mtr) == XDES_FSEG)
+//		   && mach_read_from_8(descr + XDES_ID) == seg_id
+//		   && (!xdes_is_full(descr, mtr))) {
+//
+//		/* 4. We can take the page from the same extent as the
+//		======================================================
+//		hinted page (and the extent already belongs to the
+//		==================================================
+//		segment)
+//		========*/
+//		ret_descr = descr;
+//		ret_page = xdes_get_offset(ret_descr)
+//			+ xdes_find_bit(ret_descr, XDES_FREE_BIT, TRUE,
+//					hint % FSP_EXTENT_SIZE, mtr);
+//		/*-----------------------------------------------------------*/
+//	} else if (reserved - used > 0) {
+//		/* 5. We take any unused page from the segment
+//		==============================================*/
+//		fil_addr_t	first;
+//
+//		if (flst_get_len(seg_inode + FSEG_NOT_FULL, mtr) > 0) {
+//			first = flst_get_first(seg_inode + FSEG_NOT_FULL,
+//					       mtr);
+//		} else if (flst_get_len(seg_inode + FSEG_FREE, mtr) > 0) {
+//			first = flst_get_first(seg_inode + FSEG_FREE, mtr);
+//		} else {
+//			ut_error;
+//			return(NULL);
+//		}
+//
+//		ret_descr = xdes_lst_get_descriptor(space, zip_size,
+//						    first, mtr);
+//		ret_page = xdes_get_offset(ret_descr)
+//			+ xdes_find_bit(ret_descr, XDES_FREE_BIT, TRUE,
+//					0, mtr);
+//		/*-----------------------------------------------------------*/
+//	} else if (used < FSEG_FRAG_LIMIT) {
+//		/* 6. We allocate an individual page from the space
+//		===================================================*/
+//		buf_block_t* block = fsp_alloc_free_page(
+//			space, zip_size, hint, mtr, init_mtr);
+//
+//		if (block != NULL) {
+//			/* Put the page in the fragment page array of the
+//			segment */
+//			n = fseg_find_free_frag_page_slot(seg_inode, mtr);
+//			ut_a(n != ULINT_UNDEFINED);
+//
+//			fseg_set_nth_frag_page_no(
+//				seg_inode, n, buf_block_get_page_no(block),
+//				mtr);
+//		}
+//
+//		/* fsp_alloc_free_page() invoked fsp_init_file_page()
+//		already. */
+//		return(block);
+//		/*-----------------------------------------------------------*/
+//	} else {
+//		/* 7. We allocate a new extent and take its first page
+//		======================================================*/
+//		ret_descr = fseg_alloc_free_extent(seg_inode,
+//						   space, zip_size, mtr);
+//
+//		if (ret_descr == NULL) {
+//			ret_page = FIL_NULL;
+//		} else {
+//			ret_page = xdes_get_offset(ret_descr);
+//		}
+//	}
 
 	if (ret_page == FIL_NULL) {
 		/* Page could not be allocated */
@@ -2562,7 +2681,7 @@ got_hinted_page:
 				ret_descr, XDES_FREE_BIT,
 				ret_page % FSP_EXTENT_SIZE, mtr));
 
-		fseg_mark_page_used(seg_inode, ret_page, ret_descr, mtr);
+		fseg_mark_page_used(seg_inode, ret_page, ret_descr, next_page_offset, mtr);
 	}
 
 	return(fsp_page_create(
