@@ -135,6 +135,32 @@ fsp_fill_free_list(
 	fsp_header_t*	header,		/*!< in/out: space header */
 	mtr_t*		mtr)		/*!< in/out: mini-transaction */
 	UNIV_COLD;
+/*********************************************************************//**
+Removes a page from fragment free list of file segment.
+*/
+static
+void
+fseg_frag_free_page_remove(
+    fseg_inode_t* 	seg_inode,/*!< in/out: segment inode */
+    buf_block_t* 	block,  /*!< in: page to remove from frag free page*/
+    ulint		space,	/*!< in: space */
+    ulint 		zip_size,/*!< in: compressed page size in bytes
+				or 0 for uncompressed pages */
+    mtr_t*		mtr);	/*!< in/out: mini-transaction */
+
+/*********************************************************************//**
+Adds a page as last page in fragment free list of file segment.
+*/
+static
+void
+fseg_frag_free_page_add(
+    fseg_inode_t*	seg_inode, /*!< in: segment inode */
+    ulint		page_offset,/*!< in: page offset */
+    ulint		space,	/*!< in: space id */
+    ulint		zip_size,/*!< in: compressed page size in bytes
+				or 0 for uncompressed pages */
+    mtr_t*		mtr);	/*!< in/out: mini-transaction */
+
 /**********************************************************************//**
 Allocates a single free page from a segment. This function implements
 the intelligent allocation strategy which tries to minimize file space
@@ -2073,11 +2099,20 @@ fseg_create_general(
 	mlog_write_ull(space_header + FSP_SEG_ID, seg_id + 1, mtr);
 
 	mlog_write_ull(inode + FSEG_ID, seg_id, mtr);
-	mlog_write_ulint(inode + FSEG_NOT_FULL_N_USED, 0, MLOG_4BYTES, mtr);
 
-	flst_init(inode + FSEG_FREE, mtr);
-	flst_init(inode + FSEG_NOT_FULL, mtr);
-	flst_init(inode + FSEG_FULL, mtr);
+//	mlog_write_ulint(inode + FSEG_NOT_FULL_N_USED, 0, MLOG_4BYTES, mtr);
+//
+//	flst_init(inode + FSEG_FREE, mtr);
+//	flst_init(inode + FSEG_NOT_FULL, mtr);
+//	flst_init(inode + FSEG_FULL, mtr);
+
+	mlog_write_ulint(inode + FSEG_NEXT_FREE, 0, MLOG_4BYTES, mtr);
+
+	flst_init(inode + FSEG_EXTENT, mtr);
+
+	mlog_write_ulint(inode + FSEG_FRAG_PAGE_FIRST, FIL_NULL, MLOG_4BYTES, mtr);
+	mlog_write_ulint(inode + FSEG_FRAG_PAGE_LAST, FIL_NULL, MLOG_4BYTES, mtr);
+//	flst_init(inode + FSEG_FRAG_PAGE, mtr);
 
 	mlog_write_ulint(inode + FSEG_MAGIC_N, FSEG_MAGIC_N_VALUE,
 			 MLOG_4BYTES, mtr);
@@ -2289,39 +2324,170 @@ fseg_alloc_free_extent(
 {
 	xdes_t*		descr;
 	ib_id_t		seg_id;
-	fil_addr_t	first;
+//	fil_addr_t	first;
 
 	ut_ad(!((page_offset(inode) - FSEG_ARR_OFFSET) % FSEG_INODE_SIZE));
 	ut_ad(mach_read_from_4(inode + FSEG_MAGIC_N) == FSEG_MAGIC_N_VALUE);
 
-	if (flst_get_len(inode + FSEG_FREE, mtr) > 0) {
-		/* Segment free list is not empty, allocate from it */
+	descr = fsp_alloc_free_extent(space, zip_size, 0, mtr);
 
-		first = flst_get_first(inode + FSEG_FREE, mtr);
+	if (descr == NULL) {
 
-		descr = xdes_lst_get_descriptor(space, zip_size, first, mtr);
-	} else {
-		/* Segment free list was empty, allocate from space */
-		descr = fsp_alloc_free_extent(space, zip_size, 0, mtr);
-
-		if (descr == NULL) {
-
-			return(NULL);
-		}
-
-		seg_id = mach_read_from_8(inode + FSEG_ID);
-
-		xdes_set_state(descr, XDES_FSEG, mtr);
-		mlog_write_ull(descr + XDES_ID, seg_id, mtr);
-		flst_add_last(inode + FSEG_FREE, descr + XDES_FLST_NODE, mtr);
-
-		/* Try to fill the segment free list */
-		fseg_fill_free_list(inode, space, zip_size,
-				    xdes_get_offset(descr) + FSP_EXTENT_SIZE,
-				    mtr);
+		return(NULL);
 	}
 
+	seg_id = mach_read_from_8(inode + FSEG_ID);
+
+	xdes_set_state(descr, XDES_FSEG, mtr);
+	mlog_write_ull(descr + XDES_ID, seg_id, mtr);
+	flst_add_last(inode + FSEG_EXTENT, descr + XDES_FLST_NODE, mtr);
+
 	return(descr);
+//	if (flst_get_len(inode + FSEG_FREE, mtr) > 0) {
+//		/* Segment free list is not empty, allocate from it */
+//
+//		first = flst_get_first(inode + FSEG_FREE, mtr);
+//
+//		descr = xdes_lst_get_descriptor(space, zip_size, first, mtr);
+//	} else {
+//		/* Segment free list was empty, allocate from space */
+//		descr = fsp_alloc_free_extent(space, zip_size, 0, mtr);
+//
+//		if (descr == NULL) {
+//
+//			return(NULL);
+//		}
+//
+//		seg_id = mach_read_from_8(inode + FSEG_ID);
+//
+//		xdes_set_state(descr, XDES_FSEG, mtr);
+//		mlog_write_ull(descr + XDES_ID, seg_id, mtr);
+//		flst_add_last(inode + FSEG_FREE, descr + XDES_FLST_NODE, mtr);
+//
+//		/* Try to fill the segment free list */
+//		fseg_fill_free_list(inode, space, zip_size,
+//				    xdes_get_offset(descr) + FSP_EXTENT_SIZE,
+//				    mtr);
+//	}
+//
+//	return(descr);
+}
+
+/*********************************************************************//**
+Removes a page from fragment free list of file segment.
+*/
+static
+void
+fseg_frag_free_page_remove(
+    fseg_inode_t* 	seg_inode,/*!< in/out: segment inode */
+    buf_block_t* 	block,  /*!< in: page to remove from frag free page*/
+    ulint		space,	/*!< in: space */
+    ulint 		zip_size,/*!< in: compressed page size in bytes
+				or 0 for uncompressed pages */
+    mtr_t*		mtr)	/*!< in/out: mini-transaction */
+{
+	page_t* 	page;
+	ulint 		next_page_no;
+	ulint		prev_page_no;
+	buf_block_t*	prev_block;
+	buf_block_t*	next_block;
+
+
+	page = buf_block_get_frame(block);
+
+	prev_page_no = btr_page_get_prev(page, mtr);
+	next_page_no = btr_page_get_next(page, mtr);
+
+
+	if (prev_page_no == FIL_NULL && next_page_no == FIL_NULL) {
+
+		ut_a(mtr_read_ulint(seg_inode + FSEG_FRAG_PAGE_FIRST, MLOG_4BYTES, mtr)
+		     == mtr_read_ulint(seg_inode + FSEG_FRAG_PAGE_LAST, MLOG_4BYTES, mtr));
+		mlog_write_ulint(seg_inode + FSEG_FRAG_PAGE_FIRST, 0, MLOG_4BYTES, mtr);
+		mlog_write_ulint(seg_inode + FSEG_FRAG_PAGE_LAST, 0, MLOG_4BYTES, mtr);
+		return;
+
+	}
+
+	if (prev_page_no != FIL_NULL) {
+		prev_block = buf_page_get(space, zip_size, prev_page_no,
+					  RW_X_LATCH, mtr);
+		btr_page_set_next(buf_block_get_frame(prev_block),
+				  buf_block_get_page_zip(prev_block),
+				  next_page_no, mtr);
+		btr_page_set_prev(page,
+				  buf_block_get_page_zip(block),
+				  FIL_NULL, mtr);
+	} else {
+		mlog_write_ulint(seg_inode + FSEG_FRAG_PAGE_FIRST, next_page_no, MLOG_4BYTES, mtr);
+	}
+
+	if (next_page_no != FIL_NULL) {
+		next_block = buf_page_get(
+		    space, zip_size, next_page_no, RW_X_LATCH, mtr);
+		btr_page_set_prev(buf_block_get_frame(next_block),
+				  buf_block_get_page_zip(next_block),
+				  prev_page_no, mtr);
+		btr_page_set_next(page,
+				  buf_block_get_page_zip(block),
+				  FIL_NULL, mtr);
+	} else {
+		mlog_write_ulint(seg_inode + FSEG_FRAG_PAGE_LAST, prev_page_no, MLOG_4BYTES, mtr);
+	}
+	return;
+
+}
+
+/*********************************************************************//**
+Adds a page as last page in fragment free list of file segment.
+*/
+static
+void
+fseg_frag_free_page_add(
+    fseg_inode_t*	seg_inode, /*!< in: segment inode */
+    ulint		page_offset,/*!< in: page offset */
+    ulint		space,	/*!< in: space id */
+    ulint		zip_size,/*!< in: compressed page size in bytes
+				or 0 for uncompressed pages */
+    mtr_t*		mtr)	/*!< in/out: mini-transaction */
+{
+	ulint  		last_page_no;
+	buf_block_t* 	last_block;
+	buf_block_t*	block;
+	page_t*		last_page;
+	page_t*		page;
+
+	block = buf_page_get(space, zip_size, page_offset,
+			     RW_X_LATCH, mtr);
+	page = buf_block_get_frame(block);
+
+	last_page_no = mtr_read_ulint(seg_inode + FSEG_FRAG_PAGE_LAST,
+				   MLOG_4BYTES, mtr);
+
+	if (last_page_no != FIL_NULL ) {
+
+		mlog_write_ulint( seg_inode + FSEG_FRAG_PAGE_LAST, page_offset, MLOG_4BYTES, mtr);
+
+		last_block = buf_page_get(space, zip_size, last_page_no,
+					  RW_X_LATCH, mtr);
+		last_page = buf_block_get_frame(last_block);
+		btr_page_set_next(last_page, buf_block_get_page_zip(last_block), page_offset, mtr);
+
+		btr_page_set_prev(page, buf_block_get_page_zip(block), last_page_no, mtr);
+		btr_page_set_next(page, buf_block_get_page_zip(block), FIL_NULL, mtr);
+
+	} else {
+
+		ut_a (mtr_read_ulint(seg_inode + FSEG_FRAG_PAGE_FIRST,
+				     MLOG_4BYTES, mtr) == FIL_NULL);
+
+		mlog_write_ulint( seg_inode + FSEG_FRAG_PAGE_FIRST, page_offset, MLOG_4BYTES, mtr);
+		mlog_write_ulint( seg_inode + FSEG_FRAG_PAGE_LAST, page_offset, MLOG_4BYTES, mtr);
+
+		btr_page_set_prev(page, buf_block_get_page_zip(block), FIL_NULL, mtr);
+		btr_page_set_next(page, buf_block_get_page_zip(block), FIL_NULL, mtr);
+
+	}
 }
 
 /**********************************************************************//**
@@ -3113,7 +3279,8 @@ fseg_mark_page_used(
 	fseg_inode_t*	seg_inode,/*!< in: segment inode */
 	ulint		page,	/*!< in: page offset */
 	xdes_t*		descr,  /*!< in: extent descriptor */
-	mtr_t*		mtr)	/*!< in/out: mini-transaction */
+	mtr_t*		mtr,	/*!< in/out: mini-transaction */
+	ulint		next_page_offset) /*!< in: offset of next free page in extent list */
 {
 	ulint	not_full_n_used;
 
@@ -3124,14 +3291,14 @@ fseg_mark_page_used(
 	ut_ad(mtr_read_ulint(seg_inode + FSEG_ID, MLOG_4BYTES, mtr)
 	      == mtr_read_ulint(descr + XDES_ID, MLOG_4BYTES, mtr));
 
-	if (xdes_is_free(descr, mtr)) {
-		/* We move the extent from the free list to the
-		NOT_FULL list */
-		flst_remove(seg_inode + FSEG_FREE, descr + XDES_FLST_NODE,
-			    mtr);
-		flst_add_last(seg_inode + FSEG_NOT_FULL,
-			      descr + XDES_FLST_NODE, mtr);
-	}
+//	if (xdes_is_free(descr, mtr)) {
+//		/* We move the extent from the free list to the
+//		NOT_FULL list */
+//		flst_remove(seg_inode + FSEG_FREE, descr + XDES_FLST_NODE,
+//			    mtr);
+//		flst_add_last(seg_inode + FSEG_NOT_FULL,
+//			      descr + XDES_FLST_NODE, mtr);
+//	}
 
 	ut_ad(xdes_mtr_get_bit(
 			descr, XDES_FREE_BIT, page % FSP_EXTENT_SIZE, mtr));
@@ -3139,23 +3306,28 @@ fseg_mark_page_used(
 	/* We mark the page as used */
 	xdes_set_bit(descr, XDES_FREE_BIT, page % FSP_EXTENT_SIZE, FALSE, mtr);
 
-	not_full_n_used = mtr_read_ulint(seg_inode + FSEG_NOT_FULL_N_USED,
-					 MLOG_4BYTES, mtr);
-	not_full_n_used++;
-	mlog_write_ulint(seg_inode + FSEG_NOT_FULL_N_USED, not_full_n_used,
-			 MLOG_4BYTES, mtr);
-	if (xdes_is_full(descr, mtr)) {
-		/* We move the extent from the NOT_FULL list to the
-		FULL list */
-		flst_remove(seg_inode + FSEG_NOT_FULL,
-			    descr + XDES_FLST_NODE, mtr);
-		flst_add_last(seg_inode + FSEG_FULL,
-			      descr + XDES_FLST_NODE, mtr);
+	if (next_page_offset) {
 
-		mlog_write_ulint(seg_inode + FSEG_NOT_FULL_N_USED,
-				 not_full_n_used - FSP_EXTENT_SIZE,
+		mlog_write_ulint(seg_inode + FSEG_NEXT_FREE, next_page_offset,
 				 MLOG_4BYTES, mtr);
 	}
+//	not_full_n_used = mtr_read_ulint(seg_inode + FSEG_NOT_FULL_N_USED,
+//					 MLOG_4BYTES, mtr);
+//	not_full_n_used++;
+//	mlog_write_ulint(seg_inode + FSEG_NOT_FULL_N_USED, not_full_n_used,
+//			 MLOG_4BYTES, mtr);
+//	if (xdes_is_full(descr, mtr)) {
+//		/* We move the extent from the NOT_FULL list to the
+//		FULL list */
+//		flst_remove(seg_inode + FSEG_NOT_FULL,
+//			    descr + XDES_FLST_NODE, mtr);
+//		flst_add_last(seg_inode + FSEG_FULL,
+//			      descr + XDES_FLST_NODE, mtr);
+//
+//		mlog_write_ulint(seg_inode + FSEG_NOT_FULL_N_USED,
+//				 not_full_n_used - FSP_EXTENT_SIZE,
+//				 MLOG_4BYTES, mtr);
+//	}
 }
 
 /**********************************************************************//**
