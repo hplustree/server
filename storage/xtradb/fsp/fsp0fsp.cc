@@ -2363,7 +2363,8 @@ fseg_alloc_free_page_low(
 					if could not be allocated */
 	xdes_t*		ret_descr;	/*!< the extent of the allocated page */
 	ibool		success;
-	ulint		n, next_page_offset;
+	ulint		n;
+	ulint		next_page_offset = 0;
 
 //	ut_ad((direction >= FSP_UP) && (direction <= FSP_NO_DIR));
 	ut_ad(mach_read_from_4(seg_inode + FSEG_MAGIC_N)
@@ -2393,15 +2394,48 @@ fseg_alloc_free_page_low(
 	    && mach_read_from_8(descr + XDES_ID) == seg_id
 	    && (xdes_mtr_get_bit(descr, XDES_FREE_BIT,
 				 hint % FSP_EXTENT_SIZE, mtr) == TRUE)) {
-take_hinted_page:
 		/* 1. We can take the hinted page
 		=================================*/
+		buf_block_t* block;
+		page_t* hint_page;
+		page_t* prev_page;
+		page_t* next_page;
+		int prev_page_no, next_page_no;
+
 		ret_descr = descr;
 		ret_page = hint;
 		/* Skip the check for extending the tablespace. If the
 		page hint were not within the size of the tablespace,
 		we would have got (descr == NULL) above and reset the hint. */
-		goto got_hinted_page;
+
+		block = buf_page_get(space, zip_size, ret_page, RW_X_LATCH, mtr);
+
+		hint_page = buf_block_get_frame(block);
+
+		if ((prev_page_no =
+			 mach_read_from_4(hint_page + FIL_PAGE_PREV) !=
+			 FIL_NULL) ||
+		    (next_page_no =
+			 mach_read_from_4(hint_page + FIL_PAGE_NEXT) !=
+			 FIL_NULL)) {
+			/* hint page is in fragment pages list; remove hint
+			page from the list and use it */
+
+			prev_page = buf_block_get_frame(buf_page_get(
+			    space, zip_size, prev_page_no, RW_X_LATCH, mtr));
+			mlog_write_ulint(prev_page + FIL_PAGE_NEXT,
+					 next_page_no, MLOG_4BYTES, mtr);
+
+			next_page = buf_block_get_frame(buf_page_get(
+			    space, zip_size, next_page_no, RW_X_LATCH, mtr));
+			mlog_write_ulint(next_page + FIL_PAGE_PREV,
+					 prev_page_no, MLOG_4BYTES, mtr);
+		}
+
+		fseg_mark_page_used(seg_inode, ret_page, ret_descr,
+				    next_page_offset, mtr);
+		fsp_init_file_page(block, mtr);
+		return (block);
 		/*-----------------------------------------------------------*/
 	} else if (xdes_get_state(descr, mtr) == XDES_FREE
 		   && reserved - used < reserved / FSEG_FILLFACTOR
@@ -2420,7 +2454,8 @@ take_hinted_page:
 		flst_add_last(seg_inode + FSEG_EXTENT,
 			      ret_descr + XDES_FLST_NODE, mtr);
 
-		goto take_hinted_page;
+		ret_page = hint;
+		goto got_hinted_page;
 		/*-----------------------------------------------------------*/
 	} else if (used < FSEG_FRAG_LIMIT) {
 		/* 3. We allocate an individual page from the space
@@ -2450,33 +2485,28 @@ take_hinted_page:
 		==============================================*/
 		fil_addr_t	first;
 		buf_block_t* block;
-		buf_block_t* next_block;
 		page_t* page;
 		page_t* next_page;
-		ulint prev_page, next_page_no;
+		ulint next_page_no;
 
 		first = flst_get_first(seg_inode + FSEG_FRAG_PAGE,
 					       mtr);
-		ret_descr = xdes_lst_get_descriptor(space, zip_size,
-						    first, mtr);
+		ret_descr = xdes_lst_get_descriptor(space, zip_size, first, mtr);
 		ret_page = xdes_get_offset(ret_descr);
 
-		block = buf_page_get_gen(space, zip_size, ret_page,
-					RW_X_LATCH, NULL, BUF_GET,
-						   __FILE__, __LINE__, mtr);
+		block =
+		    buf_page_get(space, zip_size, ret_page, RW_X_LATCH, mtr);
 		page = buf_block_get_frame(block);
-		next_page_no = mach_read_from_4(page + FIL_PAGE_NEXT);
-		next_block = buf_page_get_gen(space, zip_size, next_page_no,
-					 RW_X_LATCH, NULL, BUF_GET,
-					 __FILE__, __LINE__, mtr);
-		next_page = buf_block_get_frame(next_block);
-		mlog_write_ulint(next_page + FIL_PAGE_PREV,
-				 FIL_NULL, MLOG_4BYTES, mtr);
 
-		mlog_write_ulint(page + FIL_PAGE_PREV,
-				 FIL_NULL, MLOG_4BYTES, mtr);
-		mlog_write_ulint(page + FIL_PAGE_NEXT,
-				 FIL_NULL, MLOG_4BYTES, mtr);
+		next_page_no = mach_read_from_4(page + FIL_PAGE_NEXT);
+		next_page = buf_block_get_frame(buf_page_get(
+		    space, zip_size, next_page_no, RW_X_LATCH, mtr));
+		mlog_write_ulint(next_page + FIL_PAGE_PREV, FIL_NULL,
+				 MLOG_4BYTES, mtr);
+
+		fseg_mark_page_used(seg_inode, ret_page, ret_descr,
+				    next_page_offset, mtr);
+		fsp_init_file_page(block, mtr);
 		return (block);
 		/*-----------------------------------------------------------*/
 	}  else if (ulint page_no =
@@ -2496,6 +2526,7 @@ take_hinted_page:
 //			mlog_write_ulint(seg_inode + FSEG_NEXT_FREE, page_no + 1,
 //					 MLOG_4BYTES, mtr);
 		}
+		/*-----------------------------------------------------------*/
 	} else {
 		/* 6. We allocate a new extent and take its first page
 		======================================================*/
@@ -2510,6 +2541,7 @@ take_hinted_page:
 //			mlog_write_ulint(seg_inode + FSEG_NEXT_FREE, ret_page + 1,
 //					 MLOG_4BYTES, mtr);
 		}
+		/*-----------------------------------------------------------*/
 	}
 
 
@@ -2681,7 +2713,8 @@ got_hinted_page:
 				ret_descr, XDES_FREE_BIT,
 				ret_page % FSP_EXTENT_SIZE, mtr));
 
-		fseg_mark_page_used(seg_inode, ret_page, ret_descr, next_page_offset, mtr);
+		fseg_mark_page_used(seg_inode, ret_page, ret_descr,
+				    next_page_offset, mtr);
 	}
 
 	return(fsp_page_create(
@@ -3600,17 +3633,22 @@ fseg_get_first_extent(
 
 	first = fil_addr_null;
 
-	if (flst_get_len(inode + FSEG_FULL, mtr) > 0) {
+//	if (flst_get_len(inode + FSEG_FULL, mtr) > 0) {
+//
+//		first = flst_get_first(inode + FSEG_FULL, mtr);
+//
+//	} else if (flst_get_len(inode + FSEG_NOT_FULL, mtr) > 0) {
+//
+//		first = flst_get_first(inode + FSEG_NOT_FULL, mtr);
+//
+//	} else if (flst_get_len(inode + FSEG_FREE, mtr) > 0) {
+//
+//		first = flst_get_first(inode + FSEG_FREE, mtr);
+//	}
 
-		first = flst_get_first(inode + FSEG_FULL, mtr);
+	if (flst_get_len(inode + FSEG_EXTENT, mtr) > 0) {
 
-	} else if (flst_get_len(inode + FSEG_NOT_FULL, mtr) > 0) {
-
-		first = flst_get_first(inode + FSEG_NOT_FULL, mtr);
-
-	} else if (flst_get_len(inode + FSEG_FREE, mtr) > 0) {
-
-		first = flst_get_first(inode + FSEG_FREE, mtr);
+		first = flst_get_first(inode + FSEG_EXTENT, mtr);
 	}
 
 	if (first.page == FIL_NULL) {
