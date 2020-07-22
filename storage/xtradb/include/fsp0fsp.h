@@ -346,19 +346,21 @@ typedef	byte	fseg_inode_t;
 #define FSEG_NEXT_FREE		8
 					/* Page offset of next free page in
 					extent list */
-#define	FSEG_FRAG_PAGE_FIRST	12
+#define FSEG_N_USED		12
+					/* Number of used pages in extent list*/
+#define	FSEG_FRAG_PAGE_FIRST	16
 					/* page offset of first page in the
 					frag free pages list.
 					 FRAG_FREE_PAGE = list of free pages in extent list,
 					excludes first time unused pages in extent*/
-#define FSEG_FRAG_PAGE_LAST	16
+#define FSEG_FRAG_PAGE_LAST	20
 					/* page offset of first page in the
 					frag free pages list */
-#define	FSEG_EXTENT		20
+#define	FSEG_EXTENT		24
 					/* list of extents allocated to segment*/
-#define	FSEG_MAGIC_N		(20 + FLST_BASE_NODE_SIZE)
+#define	FSEG_MAGIC_N		(24 + FLST_BASE_NODE_SIZE)
 					/* magic number used in debugging */
-#define	FSEG_FRAG_ARR		(24 + FLST_BASE_NODE_SIZE)
+#define	FSEG_FRAG_ARR		(28 + FLST_BASE_NODE_SIZE)
 					/* array of individual pages
 					belonging to this segment in fsp
 					fragment extent lists */
@@ -370,7 +372,7 @@ typedef	byte	fseg_inode_t;
 					means that the slot is not in use */
 /*-------------------------------------*/
 #define FSEG_INODE_SIZE					\
-	(24 + FLST_BASE_NODE_SIZE			\
+	(28 + FLST_BASE_NODE_SIZE			\
 	 + FSEG_FRAG_ARR_N_SLOTS * FSEG_FRAG_SLOT_SIZE)
 
 #define FSP_SEG_INODES_PER_PAGE(zip_size)		\
