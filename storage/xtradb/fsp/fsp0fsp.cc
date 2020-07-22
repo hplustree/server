@@ -161,6 +161,18 @@ fseg_frag_free_page_add(
 				or 0 for uncompressed pages */
     mtr_t*		mtr);	/*!< in/out: mini-transaction */
 
+/*********************************************************************//**
+Gets a first page from fragment free page list of file segment.
+*/
+static
+buf_block_t*
+fseg_frag_free_page_get_first(
+    fseg_inode_t*	seg_inode,/*!< in: segment inode */
+    ulint		space,	/*!< in: space id */
+    ulint		zip_size,/*!< in: compressed page size in bytes
+				or 0 for uncompressed pages */
+    mtr_t*		mtr);	/*!< in/out: mini-transaction */
+
 /**********************************************************************//**
 Allocates a single free page from a segment. This function implements
 the intelligent allocation strategy which tries to minimize file space
@@ -2403,8 +2415,8 @@ fseg_frag_free_page_remove(
 
 		ut_a(mtr_read_ulint(seg_inode + FSEG_FRAG_PAGE_FIRST, MLOG_4BYTES, mtr)
 		     == mtr_read_ulint(seg_inode + FSEG_FRAG_PAGE_LAST, MLOG_4BYTES, mtr));
-		mlog_write_ulint(seg_inode + FSEG_FRAG_PAGE_FIRST, 0, MLOG_4BYTES, mtr);
-		mlog_write_ulint(seg_inode + FSEG_FRAG_PAGE_LAST, 0, MLOG_4BYTES, mtr);
+		mlog_write_ulint(seg_inode + FSEG_FRAG_PAGE_FIRST, FIL_NULL, MLOG_4BYTES, mtr);
+		mlog_write_ulint(seg_inode + FSEG_FRAG_PAGE_LAST, FIL_NULL, MLOG_4BYTES, mtr);
 		return;
 
 	}
@@ -2434,7 +2446,6 @@ fseg_frag_free_page_remove(
 	} else {
 		mlog_write_ulint(seg_inode + FSEG_FRAG_PAGE_LAST, prev_page_no, MLOG_4BYTES, mtr);
 	}
-	return;
 
 }
 
@@ -2488,6 +2499,39 @@ fseg_frag_free_page_add(
 		btr_page_set_next(page, buf_block_get_page_zip(block), FIL_NULL, mtr);
 
 	}
+}
+
+/*********************************************************************//**
+Gets a first page from fragment free pages list of file segment.
+@retval NULL if fragment free pages list is empty
+@retval block
+*/
+static
+buf_block_t*
+fseg_frag_free_page_get_first(
+    fseg_inode_t*	seg_inode,/*!< in: segment inode */
+    ulint		space,	/*!< in: space id */
+    ulint		zip_size,/*!< in: compressed page size in bytes
+				or 0 for uncompressed pages */
+    mtr_t*		mtr)	/*!< in/out: mini-transaction */
+{
+	ulint 		first_page_offset;
+	buf_block_t* 	first_block;
+
+	first_page_offset = mtr_read_ulint( seg_inode + FSEG_FRAG_PAGE_FIRST, MLOG_4BYTES, mtr);
+
+	if (first_page_offset == FIL_NULL){
+
+		return (NULL);
+	}
+
+	first_block = buf_page_get(space, zip_size, first_page_offset,
+				   RW_X_LATCH, mtr);
+
+	fseg_frag_free_page_remove(seg_inode, first_block, space, zip_size, mtr);
+
+	return (first_block);
+
 }
 
 /**********************************************************************//**
