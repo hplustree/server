@@ -102,6 +102,7 @@ fseg_mark_page_used(
 	fseg_inode_t*	seg_inode,/*!< in: segment inode */
 	ulint		page,	/*!< in: page offset */
 	xdes_t*		descr,  /*!< in: extent descriptor */
+	ulint		next_page_offset,  /*!< in: offset of next free page in extent list */
 	mtr_t*		mtr);	/*!< in/out: mini-transaction */
 /**********************************************************************//**
 Returns the first extent descriptor for a segment. We think of the extent
@@ -2579,6 +2580,7 @@ fseg_alloc_free_page_low(
 	ibool		success;
 	ulint		n;
 	ulint		next_page_offset = 0;
+	buf_block_t*	block;
 
 //	ut_ad((direction >= FSP_UP) && (direction <= FSP_NO_DIR));
 	ut_ad(mach_read_from_4(seg_inode + FSEG_MAGIC_N)
@@ -2610,11 +2612,8 @@ fseg_alloc_free_page_low(
 				 hint % FSP_EXTENT_SIZE, mtr) == TRUE)) {
 		/* 1. We can take the hinted page
 		=================================*/
-		buf_block_t* block;
 		page_t* hint_page;
-		page_t* prev_page;
-		page_t* next_page;
-		int prev_page_no, next_page_no;
+		ulint prev_page_no, next_page_no;
 
 		ret_descr = descr;
 		ret_page = hint;
@@ -2635,15 +2634,8 @@ fseg_alloc_free_page_low(
 			/* hint page is in fragment pages list; remove hint
 			page from the list and use it */
 
-			prev_page = buf_block_get_frame(buf_page_get(
-			    space, zip_size, prev_page_no, RW_X_LATCH, mtr));
-			mlog_write_ulint(prev_page + FIL_PAGE_NEXT,
-					 next_page_no, MLOG_4BYTES, mtr);
-
-			next_page = buf_block_get_frame(buf_page_get(
-			    space, zip_size, next_page_no, RW_X_LATCH, mtr));
-			mlog_write_ulint(next_page + FIL_PAGE_PREV,
-					 prev_page_no, MLOG_4BYTES, mtr);
+			fseg_frag_free_page_remove(seg_inode, block, space,
+						   zip_size, mtr);
 		}
 
 		fseg_mark_page_used(seg_inode, ret_page, ret_descr,
@@ -2674,7 +2666,7 @@ fseg_alloc_free_page_low(
 	} else if (used < FSEG_FRAG_LIMIT) {
 		/* 3. We allocate an individual page from the space
 		===================================================*/
-		buf_block_t* block = fsp_alloc_free_page(
+		block = fsp_alloc_free_page(
 		    space, zip_size, hint, mtr, init_mtr);
 
 		if (block != NULL) {
@@ -2693,30 +2685,12 @@ fseg_alloc_free_page_low(
 		return(block);
 		/*-----------------------------------------------------------*/
 	} else if ((reserved - used > 0) &&
-		   (flst_get_len(seg_inode + FSEG_FRAG_PAGE, mtr) > 0)) {
+	    (!! (block = fseg_frag_free_page_get_first(seg_inode, space, zip_size, mtr)))) {
 		/* 4. We take free page from the segment i.e.
 		 	first page from fragment page's list
 		==============================================*/
-		fil_addr_t	first;
-		buf_block_t* block;
-		page_t* page;
-		page_t* next_page;
-		ulint next_page_no;
-
-		first = flst_get_first(seg_inode + FSEG_FRAG_PAGE,
-					       mtr);
-		ret_descr = xdes_lst_get_descriptor(space, zip_size, first, mtr);
-		ret_page = xdes_get_offset(ret_descr);
-
-		block =
-		    buf_page_get(space, zip_size, ret_page, RW_X_LATCH, mtr);
-		page = buf_block_get_frame(block);
-
-		next_page_no = mach_read_from_4(page + FIL_PAGE_NEXT);
-		next_page = buf_block_get_frame(buf_page_get(
-		    space, zip_size, next_page_no, RW_X_LATCH, mtr));
-		mlog_write_ulint(next_page + FIL_PAGE_PREV, FIL_NULL,
-				 MLOG_4BYTES, mtr);
+		ret_page = buf_block_get_page_no(block);
+		ret_descr = xdes_get_descriptor(space, zip_size, ret_page, mtr);
 
 		fseg_mark_page_used(seg_inode, ret_page, ret_descr,
 				    next_page_offset, mtr);
@@ -2724,17 +2698,16 @@ fseg_alloc_free_page_low(
 		return (block);
 		/*-----------------------------------------------------------*/
 	}  else if (ulint page_no =
-		       mtr_read_ulint(seg_inode + FSEG_NEXT_FREE,
-				      MLOG_4BYTES, mtr) != FIL_NULL) {
+		       mach_read_from_4(seg_inode + FSEG_NEXT_FREE) !=
+		       FIL_NULL) {
 		/* 5. We take next page in extent
 		==============================================*/
-		ret_descr = xdes_get_descriptor_with_space_hdr(space_header,
-							       space,
-							       page_no, mtr);
+		ret_descr = xdes_get_descriptor_with_space_hdr(
+		    space_header, space, page_no, mtr);
+
 		if (ret_descr == NULL) {
 			ret_page = FIL_NULL;
-		}
-		else {
+		} else {
 			ret_page = page_no;
 			next_page_offset = page_no + 1;
 //			mlog_write_ulint(seg_inode + FSEG_NEXT_FREE, page_no + 1,
@@ -3327,8 +3300,8 @@ fseg_mark_page_used(
 	fseg_inode_t*	seg_inode,/*!< in: segment inode */
 	ulint		page,	/*!< in: page offset */
 	xdes_t*		descr,  /*!< in: extent descriptor */
-	mtr_t*		mtr,	/*!< in/out: mini-transaction */
-	ulint		next_page_offset) /*!< in: offset of next free page in extent list */
+	ulint		next_page_offset,  /*!< in: offset of next free page in extent list */
+	mtr_t*		mtr)	/*!< in/out: mini-transaction */
 {
 	ulint	n_used;
 
