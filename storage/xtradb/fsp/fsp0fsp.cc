@@ -2423,8 +2423,8 @@ fseg_frag_free_page_remove(
 
 	if (prev_page_no == FIL_NULL && next_page_no == FIL_NULL) {
 
-		ut_a(mtr_read_ulint(seg_inode + FSEG_FRAG_PAGE_FIRST, MLOG_4BYTES, mtr)
-		     == mtr_read_ulint(seg_inode + FSEG_FRAG_PAGE_LAST, MLOG_4BYTES, mtr));
+		ut_a(mach_read_from_4(seg_inode + FSEG_FRAG_PAGE_FIRST)
+		     == mach_read_from_4(seg_inode + FSEG_FRAG_PAGE_LAST));
 		mlog_write_ulint(seg_inode + FSEG_FRAG_PAGE_FIRST, FIL_NULL, MLOG_4BYTES, mtr);
 		mlog_write_ulint(seg_inode + FSEG_FRAG_PAGE_LAST, FIL_NULL, MLOG_4BYTES, mtr);
 		return;
@@ -2499,8 +2499,7 @@ fseg_frag_free_page_add(
 
 	} else {
 
-		ut_a (mtr_read_ulint(seg_inode + FSEG_FRAG_PAGE_FIRST,
-				     MLOG_4BYTES, mtr) == FIL_NULL);
+		ut_a (mach_read_from_4(seg_inode + FSEG_FRAG_PAGE_FIRST)== FIL_NULL);
 
 		mlog_write_ulint( seg_inode + FSEG_FRAG_PAGE_FIRST, page_offset, MLOG_4BYTES, mtr);
 		mlog_write_ulint( seg_inode + FSEG_FRAG_PAGE_LAST, page_offset, MLOG_4BYTES, mtr);
@@ -2529,6 +2528,11 @@ fseg_frag_free_page_get_first(
 	buf_block_t* 	first_block;
 
 	first_page_offset = mtr_read_ulint( seg_inode + FSEG_FRAG_PAGE_FIRST, MLOG_4BYTES, mtr);
+
+	if ( first_page_offset == FIL_NULL ) {
+
+		return (NULL);
+	}
 
 	first_block = buf_page_get(space, zip_size, first_page_offset,
 				   RW_X_LATCH, mtr);
@@ -3588,7 +3592,7 @@ fseg_free_extent(
 {
 	ulint	first_page_in_extent;
 	xdes_t*	descr;
-	ulint	not_full_n_used;
+	ulint	n_used;
 	ulint	descr_n_used;
 	ulint	i;
 
@@ -3615,25 +3619,35 @@ fseg_free_extent(
 		}
 	}
 
-	if (xdes_is_full(descr, mtr)) {
-		flst_remove(seg_inode + FSEG_FULL,
-			    descr + XDES_FLST_NODE, mtr);
-	} else if (xdes_is_free(descr, mtr)) {
-		flst_remove(seg_inode + FSEG_FREE,
-			    descr + XDES_FLST_NODE, mtr);
-	} else {
-		flst_remove(seg_inode + FSEG_NOT_FULL,
-			    descr + XDES_FLST_NODE, mtr);
+	flst_remove(seg_inode + FSEG_EXTENT, descr + XDES_FLST_NODE, mtr);
+	n_used = mtr_read_ulint(
+	    seg_inode + FSEG_N_USED, MLOG_4BYTES, mtr);
+	descr_n_used = xdes_get_n_used(descr, mtr);
+	mlog_write_ulint(seg_inode + FSEG_N_USED,
+			 n_used - descr_n_used,
+			 MLOG_4BYTES, mtr);
 
-		not_full_n_used = mtr_read_ulint(
-			seg_inode + FSEG_NOT_FULL_N_USED, MLOG_4BYTES, mtr);
 
-		descr_n_used = xdes_get_n_used(descr, mtr);
-		ut_a(not_full_n_used >= descr_n_used);
-		mlog_write_ulint(seg_inode + FSEG_NOT_FULL_N_USED,
-				 not_full_n_used - descr_n_used,
-				 MLOG_4BYTES, mtr);
-	}
+
+//	if (xdes_is_full(descr, mtr)) {
+//		flst_remove(seg_inode + FSEG_FULL,
+//			    descr + XDES_FLST_NODE, mtr);
+//	} else if (xdes_is_free(descr, mtr)) {
+//		flst_remove(seg_inode + FSEG_FREE,
+//			    descr + XDES_FLST_NODE, mtr);
+//	} else {
+//		flst_remove(seg_inode + FSEG_NOT_FULL,
+//			    descr + XDES_FLST_NODE, mtr);
+
+//		not_full_n_used = mtr_read_ulint(
+//			seg_inode + FSEG_NOT_FULL_N_USED, MLOG_4BYTES, mtr);
+
+//		descr_n_used = xdes_get_n_used(descr, mtr);
+//		ut_a(not_full_n_used >= descr_n_used);
+//		mlog_write_ulint(seg_inode + FSEG_NOT_FULL_N_USED,
+//				 not_full_n_used - descr_n_used,
+//				 MLOG_4BYTES, mtr);
+//	}
 
 	fsp_free_extent(space, zip_size, page, mtr);
 
@@ -4006,12 +4020,13 @@ fseg_print_low(
 	ulint	space;
 	ulint	n_used;
 	ulint	n_frag;
-	ulint	n_free;
-	ulint	n_not_full;
-	ulint	n_full;
+	ulint	n_extent;
 	ulint	reserved;
 	ulint	used;
 	ulint	page_no;
+	ulint 	next_free_offset;
+	ulint 	first_frag_page;
+	ulint	last_frag_page;
 	ib_id_t	seg_id;
 
 	ut_ad(mtr_memo_contains_page(mtr, inode, MTR_MEMO_PAGE_X_FIX));
@@ -4022,23 +4037,29 @@ fseg_print_low(
 
 	seg_id = mach_read_from_8(inode + FSEG_ID);
 
-	n_used = mtr_read_ulint(inode + FSEG_NOT_FULL_N_USED,
-				MLOG_4BYTES, mtr);
+	n_used = mtr_read_ulint(inode + FSEG_N_USED, MLOG_4BYTES, mtr);
+//	n_used = mtr_read_ulint(inode + FSEG_NOT_FULL_N_USED,
+//				MLOG_4BYTES, mtr);
 	n_frag = fseg_get_n_frag_pages(inode, mtr);
-	n_free = flst_get_len(inode + FSEG_FREE, mtr);
-	n_not_full = flst_get_len(inode + FSEG_NOT_FULL, mtr);
-	n_full = flst_get_len(inode + FSEG_FULL, mtr);
+	n_extent = flst_get_len(inode + FSEG_EXTENT, mtr);
+
+	next_free_offset = mtr_read_ulint(inode + FSEG_NEXT_FREE, MLOG_4BYTES, mtr);
+	first_frag_page = mtr_read_ulint(inode + FSEG_FRAG_PAGE_FIRST, MLOG_4BYTES, mtr);
+	last_frag_page = mtr_read_ulint(inode + FSEG_FRAG_PAGE_LAST, MLOG_4BYTES, mtr);
+//	n_free = flst_get_len(inode + FSEG_FREE, mtr);
+//	n_not_full = flst_get_len(inode + FSEG_NOT_FULL, mtr);
+//	n_full = flst_get_len(inode + FSEG_FULL, mtr);
 
 	fprintf(stderr,
 		"SEGMENT id %llu space %lu; page %lu;"
-		" res %lu used %lu; full ext %lu\n"
-		"fragm pages %lu; free extents %lu;"
-		" not full extents %lu: pages %lu\n",
+		" res %lu used %lu; extents %lu\n"
+		"fragm pages %lu; used ext pages %lu;"
+		" frag free first page %lu: last page %lu\n",
 		(ullint) seg_id,
 		(ulong) space, (ulong) page_no,
-		(ulong) reserved, (ulong) used, (ulong) n_full,
-		(ulong) n_frag, (ulong) n_free, (ulong) n_not_full,
-		(ulong) n_used);
+		(ulong) reserved, (ulong) used, (ulong) n_extent,
+		(ulong) n_frag, (ulong) n_used, (ulong) first_frag_page,
+		(ulong) last_frag_page);
 	ut_ad(mach_read_from_4(inode + FSEG_MAGIC_N) == FSEG_MAGIC_N_VALUE);
 }
 
