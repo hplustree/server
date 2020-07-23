@@ -1728,11 +1728,15 @@ btr_create(
 		/* Allocate then the next page to the segment: it will be the
 		tree root page */
 
+//		block = fseg_alloc_free_page(
+//			buf_block_get_frame(ibuf_hdr_block)
+//			+ IBUF_HEADER + IBUF_TREE_SEG_HEADER,
+//			IBUF_TREE_ROOT_PAGE_NO,
+//			FSP_UP, mtr);
 		block = fseg_alloc_free_page(
-			buf_block_get_frame(ibuf_hdr_block)
-			+ IBUF_HEADER + IBUF_TREE_SEG_HEADER,
-			IBUF_TREE_ROOT_PAGE_NO,
-			FSP_UP, mtr);
+		    buf_block_get_frame(ibuf_hdr_block)
+		    + IBUF_HEADER + IBUF_TREE_SEG_HEADER,
+		    IBUF_TREE_ROOT_PAGE_NO, mtr);
 
 		if (block == NULL) {
 			return(FIL_NULL);

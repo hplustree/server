@@ -924,10 +924,14 @@ trx_undo_add_page(
 		return(NULL);
 	}
 
+//	new_block = fseg_alloc_free_page_general(
+//		TRX_UNDO_SEG_HDR + TRX_UNDO_FSEG_HEADER
+//		+ header_page,
+//		undo->top_page_no + 1, FSP_UP, TRUE, mtr, mtr);
+
 	new_block = fseg_alloc_free_page_general(
-		TRX_UNDO_SEG_HDR + TRX_UNDO_FSEG_HEADER
-		+ header_page,
-		undo->top_page_no + 1, FSP_UP, TRUE, mtr, mtr);
+	    TRX_UNDO_SEG_HDR + TRX_UNDO_FSEG_HEADER
+	    + header_page, undo->top_page_no + 1, TRUE, mtr, mtr);
 
 	fil_space_release_free_extents(undo->space, n_reserved);
 

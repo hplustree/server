@@ -603,9 +603,10 @@ file space fragmentation.
 				FSP_UP, FSP_NO_DIR
 @param[in/out] mtr		mini-transaction
 @return	X-latched block, or NULL if no page could be allocated */
-#define fseg_alloc_free_page(seg_header, hint, direction, mtr)		\
-	fseg_alloc_free_page_general(seg_header, hint, direction,	\
-				     FALSE, mtr, mtr)
+
+/* direction parameter is not needed now */
+#define fseg_alloc_free_page(seg_header, hint, mtr)		\
+	fseg_alloc_free_page_general(seg_header, hint, FALSE, mtr, mtr)
 /**********************************************************************//**
 Allocates a single free page from a segment. This function implements
 the intelligent allocation strategy which tries to minimize file space
@@ -614,6 +615,8 @@ fragmentation.
 @retval block, rw_lock_x_lock_count(&block->lock) == 1 if allocation succeeded
 (init_mtr == mtr, or the page was not previously freed in mtr)
 @retval block (not allocated or initialized) otherwise */
+
+/* direction parameter is not needed now */
 UNIV_INTERN
 buf_block_t*
 fseg_alloc_free_page_general(
@@ -621,11 +624,6 @@ fseg_alloc_free_page_general(
 	fseg_header_t*	seg_header,/*!< in/out: segment header */
 	ulint		hint,	/*!< in: hint of which page would be
 				desirable */
-	byte		direction,/*!< in: if the new page is needed because
-				of an index page split, and records are
-				inserted there in order, into which
-				direction they go alphabetically: FSP_DOWN,
-				FSP_UP, FSP_NO_DIR */
 	ibool		has_done_reservation, /*!< in: TRUE if the caller has
 				already done the reservation for the page
 				with fsp_reserve_free_extents, then there

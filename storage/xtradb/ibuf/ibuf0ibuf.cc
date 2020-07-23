@@ -2153,9 +2153,11 @@ ibuf_add_free_page(void)
 	of a deadlock. This is the reason why we created a special ibuf
 	header page apart from the ibuf tree. */
 
+//	block = fseg_alloc_free_page(
+//		header_page + IBUF_HEADER + IBUF_TREE_SEG_HEADER, 0, FSP_UP,
+//		&mtr);
 	block = fseg_alloc_free_page(
-		header_page + IBUF_HEADER + IBUF_TREE_SEG_HEADER, 0, FSP_UP,
-		&mtr);
+	    header_page + IBUF_HEADER + IBUF_TREE_SEG_HEADER, 0, &mtr);
 
 	if (block == NULL) {
 		mtr_commit(&mtr);
