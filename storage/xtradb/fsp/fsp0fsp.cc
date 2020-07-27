@@ -1813,6 +1813,34 @@ fsp_alloc_seg_inode(
 	return(inode);
 }
 
+//Allocates root page from file space. */
+//static
+//buf_block_t*
+//fsp_alloc_index_root_page(
+//    ulint 	space,	/*!< in: space id */
+//    ulint 	zip_size,/*!< in: compressed page size in bytes
+//			or 0 for uncompressed pages */
+//    mtr_t* 	mtr)	/*!< in/out: mini-transaction */
+//{
+//	buf_block_t* block;
+//
+//	block = fsp_alloc_free_page(space, zip_size, 0, mtr, mtr);
+//
+//	if (block == NULL) {
+//
+//		return(NULL);
+//	}
+//
+//	buf_block_dbg_add_level(block, SYNC_FSP_PAGE);
+//	ut_ad(rw_lock_get_x_lock_count(&block->lock) == 1);
+//
+//	block->check_index_page_at_flush = FALSE;
+//
+//	mlog_write_ulint(buf_block_get_frame(block) + FIL_PAGE_TYPE,
+//			 FIL_PAGE_TYPE_SYS, MLOG_2BYTES, mtr);
+//	return (block);
+//}
+
 /**********************************************************************//**
 Frees a file segment inode. */
 static
@@ -2115,7 +2143,7 @@ fseg_create_general(
 //	flst_init(inode + FSEG_FULL, mtr);
 
 	mlog_write_ulint(inode + FSEG_N_USED, 0, MLOG_4BYTES, mtr);
-	mlog_write_ulint(inode + FSEG_NEXT_FREE, 0, MLOG_4BYTES, mtr);
+	mlog_write_ulint(inode + FSEG_NEXT_FREE, FIL_NULL, MLOG_4BYTES, mtr);
 
 	flst_init(inode + FSEG_EXTENT, mtr);
 
@@ -4061,7 +4089,7 @@ fseg_print_low(
 	ulint	reserved;
 	ulint	used;
 	ulint	page_no;
-	ulint 	next_free_offset;
+//	ulint 	next_free_offset;
 	ulint 	first_frag_page;
 	ulint	last_frag_page;
 	ib_id_t	seg_id;
@@ -4080,7 +4108,7 @@ fseg_print_low(
 	n_frag = fseg_get_n_frag_pages(inode, mtr);
 	n_extent = flst_get_len(inode + FSEG_EXTENT, mtr);
 
-	next_free_offset = mtr_read_ulint(inode + FSEG_NEXT_FREE, MLOG_4BYTES, mtr);
+//	next_free_offset = mtr_read_ulint(inode + FSEG_NEXT_FREE, MLOG_4BYTES, mtr);
 	first_frag_page = mtr_read_ulint(inode + FSEG_FRAG_PAGE_FIRST, MLOG_4BYTES, mtr);
 	last_frag_page = mtr_read_ulint(inode + FSEG_FRAG_PAGE_LAST, MLOG_4BYTES, mtr);
 //	n_free = flst_get_len(inode + FSEG_FREE, mtr);

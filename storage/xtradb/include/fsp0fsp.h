@@ -683,6 +683,44 @@ ullint
 fsp_get_available_space_in_free_extents(
 /*====================================*/
 	ulint	space);	/*!< in: space id */
+///**********************************************************************//**
+//Allocates root page from file space. */
+//static
+//buf_block_t*
+//fsp_alloc_root_page(
+//    ulint	space,	/*!< in: space id */
+//    ulint	zip_size,/*!< in: compressed page size in bytes
+//			or 0 for uncompressed pages */
+//    mtr_t*	mtr);	/*!< in/out: mini-transaction */
+/**********************************************************************//**
+Allocates a single free page from a space. The page is marked as used.
+@retval NULL if no page could be allocated
+@retval block, rw_lock_x_lock_count(&block->lock) == 1 if allocation succeeded
+(init_mtr == mtr, or the page was not previously freed in mtr)
+@retval block (not allocated or initialized) otherwise */
+static MY_ATTRIBUTE((warn_unused_result))
+buf_block_t*
+fsp_alloc_free_page(
+/*================*/
+    ulint	space,	/*!< in: space id */
+    ulint	zip_size,/*!< in: compressed page size in bytes
+			or 0 for uncompressed pages */
+    ulint	hint,	/*!< in: hint of which page would be desirable */
+    mtr_t*	mtr,	/*!< in/out: mini-transaction */
+    mtr_t*	init_mtr);/*!< in/out: mini-transaction in which the
+			page should be initialized
+			(may be the same as mtr) */
+/**********************************************************************//**
+Frees a single page of a space. The page is marked as free and clean. */
+static
+void
+fsp_free_page(
+/*==========*/
+    ulint	space,	/*!< in: space id */
+    ulint	zip_size,/*!< in: compressed page size in bytes
+			or 0 for uncompressed pages */
+    ulint	page,	/*!< in: page offset */
+    mtr_t*	mtr);	/*!< in/out: mini-transaction */
 /**********************************************************************//**
 Frees a single page of a segment. */
 UNIV_INTERN

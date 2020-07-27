@@ -1757,21 +1757,24 @@ btr_create(
 						  btr_blob_dbg_cmp);
 		}
 #endif /* UNIV_BLOB_DEBUG */
-		block = fseg_create(space, 0,
-				    PAGE_HEADER + PAGE_BTR_SEG_TOP, mtr);
+		block = fsp_alloc_free_page(space, zip_size, 0, mtr, mtr);
+
+//		block = fseg_create(space, 0,
+//				    PAGE_HEADER + PAGE_BTR_SEG_TOP, mtr);
 
 		if (block == NULL) {
 			return(FIL_NULL);
 		}
 
-		buf_block_dbg_add_level(block, SYNC_TREE_NODE_NEW);
+//		buf_block_dbg_add_level(block, SYNC_TREE_NODE_NEW);
 
 		if (!fseg_create(space, buf_block_get_page_no(block),
-				 PAGE_HEADER + PAGE_BTR_SEG_LEAF, mtr)) {
+				 PAGE_HEADER + PAGE_BTR_SEG_OWN, mtr)) {
 			/* Not enough space for new segment, free root
 			segment before return. */
-			btr_free_root(space, zip_size,
-				      buf_block_get_page_no(block), mtr);
+			btr_free_root_page(space, zip_size, buf_block_get_page_no(block), mtr);
+//			btr_free_root(space, zip_size,
+//				      buf_block_get_page_no(block), mtr);
 			return(FIL_NULL);
 		}
 
@@ -1893,6 +1896,29 @@ top_loop:
 	if (!finished) {
 
 		goto top_loop;
+	}
+}
+/************************************************************//**
+Frees the B-tree root page. */
+static
+void
+btr_free_root_page(
+    ulint	space,		/*!< in: space where created */
+    ulint	zip_size,	/*!< in: compressed page size in bytes
+				or 0 for uncompressed pages */
+    ulint	root_page_no,	/*!< in: root page number */
+    mtr_t*	mtr)		/*!< in/out: mini-transaction */
+{
+	buf_block_t* 	block;
+
+	block = btr_block_get(space, zip_size, root_page_no, RW_X_LATCH,
+		      NULL, mtr);
+	if (block) {
+		SRV_CORRUPT_TABLE_CHECK(block, return;);
+
+		btr_search_drop_page_hash_index(block);
+
+		fsp_free_page(space, zip_size, root_page_no, mtr);
 	}
 }
 
@@ -2504,10 +2530,10 @@ btr_page_get_split_rec_to_left(
 
 		if (infimum != insert_point
 		    && page_rec_get_next(infimum) != insert_point) {
-
-			*split_rec = insert_point;
+			/*middle of page case*/
+			*split_rec = insert_point;/*previous record of last record*/
 		} else {
-			*split_rec = page_rec_get_next(insert_point);
+			*split_rec = page_rec_get_next(insert_point);/*last record*/
 		}
 
 		return(TRUE);
@@ -2541,13 +2567,13 @@ btr_page_get_split_rec_to_right(
 	pattern of sequential inserts here. */
 
 	if (page_header_get_ptr(page, PAGE_LAST_INSERT) == insert_point) {
-
+	/*check that new record will need to insert right after last record*/
 		rec_t*	next_rec;
 
 		next_rec = page_rec_get_next(insert_point);
 
 		if (page_rec_is_supremum(next_rec)) {
-split_at_new:
+split_at_new:/*if last record is in the end of record list then*/
 			/* Split at the new record to insert */
 			*split_rec = NULL;
 		} else {
@@ -2563,8 +2589,8 @@ split_at_new:
 			index, as they can do the necessary checks of the right
 			search position just by looking at the records on this
 			page. */
-
-			*split_rec = next_next_rec;
+			/* at this point, last record is before second last record in list*/
+			*split_rec = next_next_rec;/*split record is set to one record after last insert record*/
 		}
 
 		return(TRUE);
@@ -2791,7 +2817,7 @@ Inserts a data tuple to a tree on a non-leaf level. It is assumed
 that mtr holds an x-latch on the tree. */
 UNIV_INTERN
 void
-btr_insert_on_non_leaf_level_func(
+btr_insert_on_non_leaf_level_func(/*function that perform recursive insert to upper level*/
 /*==============================*/
 	ulint		flags,	/*!< in: undo logging and locking flags */
 	dict_index_t*	index,	/*!< in: index */
@@ -3217,7 +3243,7 @@ func_start:
 
 	/* 1. Decide the split record; split_rec == NULL means that the
 	tuple to be inserted should be the first record on the upper
-	half-page */
+	half-page. split record means first record on the upper half-page*/
 	insert_left = FALSE;
 
 	if (tuple != NULL && n_iterations > 0) {
@@ -3290,7 +3316,7 @@ func_start:
 		*offsets = rec_get_offsets(split_rec, cursor->index, *offsets,
 					   n_uniq, heap);
 
-		if (tuple != NULL) {
+		if (tuple != NULL) {/*choose for tuple insert direction will be left or right to split rec*/
 			insert_left = cmp_dtuple_rec(
 				tuple, split_rec, *offsets) < 0;
 		} else {
@@ -3319,10 +3345,10 @@ insert_empty:
 						      tuple, n_ext);
 		move_limit = page_rec_get_next(btr_cur_get_rec(cursor));
 	}
-
+	/*first_rec is first record on upper half-page = split_rec*/
 	/* 4. Do first the modifications in the tree structure */
 
-	btr_attach_half_pages(flags, cursor->index, block,
+	btr_attach_half_pages(flags, cursor->index, block,/*recursive call to upwards on tree*/
 			      first_rec, new_block, direction, mtr);
 
 	/* If the split is made on the leaf level and the insert will fit
@@ -3353,11 +3379,11 @@ insert_empty:
 		mtr_memo_release(mtr, dict_index_get_lock(cursor->index),
 				 MTR_MEMO_X_LOCK);
 	}
-
+	/*move_limit is for record transfer from one page to another. */
 	/* 5. Move then the records to the new page */
 	if (direction == FSP_DOWN) {
 		/*		fputs("Split left\n", stderr); */
-
+		/*not move move_limit to left page*/
 		if (0
 #ifdef UNIV_ZIP_COPY
 		    || page_zip
@@ -3399,7 +3425,7 @@ insert_empty:
 		lock_update_split_left(right_block, left_block);
 	} else {
 		/*		fputs("Split right\n", stderr); */
-
+		/* move records after move_limit including move_limit to right page*/
 		if (0
 #ifdef UNIV_ZIP_COPY
 		    || page_zip
