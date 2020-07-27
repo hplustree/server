@@ -5067,8 +5067,11 @@ btr_store_big_rec_extern_fields(
 			}
 
 alloc_another:
-			block = btr_page_alloc(index, hint_page_no,
-					       FSP_NO_DIR, 0, alloc_mtr, &mtr);
+//			block = btr_page_alloc(index, hint_page_no,
+//					       FSP_NO_DIR, 0, alloc_mtr, &mtr);
+
+			block = btr_page_alloc(index, rec_block, hint_page_no,
+		       				alloc_mtr, &mtr);
 			if (UNIV_UNLIKELY(block == NULL)) {
 				mtr_commit(&mtr);
 				error = DB_OUT_OF_FILE_SPACE;

@@ -1153,11 +1153,8 @@ buf_block_t*
 btr_page_alloc_low(
 /*===============*/
 	dict_index_t*	index,		/*!< in: index */
+	buf_block_t*	block,		/*!< in: sibling page block */
 	ulint		hint_page_no,	/*!< in: hint of a good page */
-	byte		file_direction,	/*!< in: direction where a possible
-					page split is made */
-	ulint		level,		/*!< in: level where the page is placed
-					in the tree */
 	mtr_t*		mtr,		/*!< in/out: mini-transaction
 					for the allocation */
 	mtr_t*		init_mtr)	/*!< in/out: mtr or another
@@ -1168,23 +1165,31 @@ btr_page_alloc_low(
 					not initialize the page. */
 {
 	fseg_header_t*	seg_header;
-	page_t*		root;
+//	page_t*		root;
+	page_t*		page;
 
-	root = btr_root_get(index, mtr);
+//	root = btr_root_get(index, mtr);
 
-	if (level == 0) {
-		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
-	} else {
-		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_TOP;
-	}
+//	if (level == 0) {
+//		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+//	} else {
+//		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_TOP;
+//	}
+
+	page = buf_block_get_frame(block);
+
+	seg_header = page + PAGE_HEADER + PAGE_BTR_SEG_PARENT;
 
 	/* Parameter TRUE below states that the caller has made the
 	reservation for free extents, and thus we know that a page can
 	be allocated: */
 
-	buf_block_t* block = fseg_alloc_free_page_general(
-		seg_header, hint_page_no, file_direction,
-		TRUE, mtr, init_mtr);
+//	buf_block_t* block = fseg_alloc_free_page_general(
+//		seg_header, hint_page_no, file_direction,
+//		TRUE, mtr, init_mtr);
+	buf_block_t* new_block = fseg_alloc_free_page_general(
+	    seg_header, hint_page_no,
+	    TRUE, mtr, init_mtr);
 
 #ifdef UNIV_DEBUG_SCRUBBING
 	if (block != NULL) {
@@ -1202,7 +1207,7 @@ btr_page_alloc_low(
 	}
 #endif /* UNIV_DEBUG_SCRUBBING */
 
-	return block;
+	return new_block;
 }
 
 /**************************************************************//**
@@ -1217,11 +1222,8 @@ buf_block_t*
 btr_page_alloc(
 /*===========*/
 	dict_index_t*	index,		/*!< in: index */
+	buf_block_t*	block,		/*!< in: sibling page block */
 	ulint		hint_page_no,	/*!< in: hint of a good page */
-	byte		file_direction,	/*!< in: direction where a possible
-					page split is made */
-	ulint		level,		/*!< in: level where the page is placed
-					in the tree */
 	mtr_t*		mtr,		/*!< in/out: mini-transaction
 					for the allocation */
 	mtr_t*		init_mtr)	/*!< in/out: mini-transaction
@@ -1235,8 +1237,11 @@ btr_page_alloc(
 		return(btr_page_alloc_for_ibuf(index, mtr));
 	}
 
+//	new_block = btr_page_alloc_low(
+//		index, hint_page_no, file_direction, level, mtr, init_mtr);
+
 	new_block = btr_page_alloc_low(
-		index, hint_page_no, file_direction, level, mtr, init_mtr);
+	    index, block, hint_page_no, mtr, init_mtr);
 
 	if (new_block) {
 		buf_block_dbg_add_level(new_block, SYNC_TREE_NODE_NEW);
@@ -2361,9 +2366,9 @@ btr_root_raise_and_insert(
 	if (!dict_index_is_ibuf(index)) {
 		ulint	space = dict_index_get_space(index);
 
-		ut_a(btr_root_fseg_validate(FIL_PAGE_DATA + PAGE_BTR_SEG_LEAF
+		ut_a(btr_root_fseg_validate(FIL_PAGE_DATA + PAGE_BTR_SEG_OWN
 					    + root, space));
-		ut_a(btr_root_fseg_validate(FIL_PAGE_DATA + PAGE_BTR_SEG_TOP
+		ut_a(btr_root_fseg_validate(FIL_PAGE_DATA + PAGE_BTR_SEG_PARENT
 					    + root, space));
 	}
 
@@ -2379,7 +2384,10 @@ btr_root_raise_and_insert(
 
 	level = btr_page_get_level(root, mtr);
 
-	new_block = btr_page_alloc(index, 0, FSP_NO_DIR, level, mtr, mtr);
+//	new_block = btr_page_alloc(index, 0, FSP_NO_DIR, level, mtr, mtr);
+
+	new_block = btr_page_alloc(index, root_block, 0, mtr, mtr);
+
 
 	if (new_block == NULL && os_has_said_disk_full) {
 		return(NULL);
@@ -3288,8 +3296,8 @@ func_start:
                         return(NULL););
 
 	/* 2. Allocate a new page to the index */
-	new_block = btr_page_alloc(cursor->index, hint_page_no, direction,
-				   btr_page_get_level(page, mtr), mtr, mtr);
+	new_block = btr_page_alloc(cursor->index, block, hint_page_no,
+				   mtr, mtr);
 
 	if (new_block == NULL && os_has_said_disk_full) {
 		return(NULL);

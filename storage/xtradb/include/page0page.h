@@ -83,21 +83,29 @@ typedef	byte		page_header_t;
 #define	PAGE_INDEX_ID	 28	/* index id where the page belongs.
 				This field should not be written to after
 				page creation. */
-#define PAGE_BTR_SEG_LEAF 36	/* file segment header for the leaf pages in
-				a B-tree: defined only on the root page of a
-				B-tree, but not in the root of an ibuf tree */
-#define PAGE_BTR_IBUF_FREE_LIST	PAGE_BTR_SEG_LEAF
-#define PAGE_BTR_IBUF_FREE_LIST_NODE PAGE_BTR_SEG_LEAF
+//#define PAGE_BTR_SEG_LEAF 36	/* file segment header for the leaf pages in
+//				a B-tree: defined only on the root page of a
+//				B-tree, but not in the root of an ibuf tree */
+
+#define PAGE_BTR_SEG_OWN 36	/* file segment header of page's own segment in
+				a B-tree: not defined in the root of an ibuf tree */
+
+#define PAGE_BTR_IBUF_FREE_LIST	PAGE_BTR_SEG_OWN
+#define PAGE_BTR_IBUF_FREE_LIST_NODE PAGE_BTR_SEG_OWN
 				/* in the place of PAGE_BTR_SEG_LEAF and _TOP
 				there is a free list base node if the page is
 				the root page of an ibuf tree, and at the same
 				place is the free list node if the page is in
 				a free list */
-#define PAGE_BTR_SEG_TOP (36 + FSEG_HEADER_SIZE)
-				/* file segment header for the non-leaf pages
-				in a B-tree: defined only on the root page of
-				a B-tree, but not in the root of an ibuf
-				tree */
+//#define PAGE_BTR_SEG_TOP (36 + FSEG_HEADER_SIZE)
+//				/* file segment header for the non-leaf pages
+//				in a B-tree: defined only on the root page of
+//				a B-tree, but not in the root of an ibuf
+//				tree */
+
+#define PAGE_BTR_SEG_PARENT (36 + FSEG_HEADER_SIZE)
+				/* file segment header of page's parent in a
+				B-tree: not defined in the root of an ibuf tree */
 /*----*/
 #define PAGE_DATA	(PAGE_HEADER + 36 + 2 * FSEG_HEADER_SIZE)
 				/* start of data on the page */
