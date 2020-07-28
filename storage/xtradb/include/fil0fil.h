@@ -151,7 +151,7 @@ extern fil_addr_t	fil_addr_null;
 					to the last 4 bytes of FIL_PAGE_LSN */
 #define FIL_PAGE_DATA_END	8	/*!< size of the page trailer */
 /* @} */
-
+/*file page type*/
 /** File page types (values of FIL_PAGE_TYPE) @{ */
 #define FIL_PAGE_PAGE_COMPRESSED_ENCRYPTED 37401 /*!< Page is compressed and
 						 then encrypted */

@@ -41,6 +41,7 @@ fseg_alloc_free_page) */
 #define	FSP_DOWN	((byte)112)	/*!< alphabetically downwards */
 #define	FSP_NO_DIR	((byte)113)	/*!< no order */
 /* @} */
+/*table space*/
 
 /** File space extent size in pages
 page size | file space extent size

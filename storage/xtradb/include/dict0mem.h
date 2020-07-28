@@ -61,7 +61,7 @@ Created 1/8/1996 Heikki Tuuri
 
 /* Forward declaration. */
 struct ib_rbt_t;
-
+/*type flag of index*/
 /** Type flags of an index: OR'ing of the flags is allowed to define a
 combination of types */
 /* @{ */
@@ -1044,6 +1044,7 @@ typedef enum {
 	DICT_FRM_INCONSISTENT_KEYS = 3	/*!< Key count mismatch */
 } dict_frm_t;
 
+/*database table structure*/
 /** Data structure for a database table.  Most fields will be
 initialized to 0, NULL or FALSE in dict_mem_table_create(). */
 struct dict_table_t{

@@ -53,7 +53,7 @@ page_align(
 }
 /************************************************************//**
 Gets the offset within a page.
-@return	offset from the start of the page */
+@return	offset from the start of the page */ /*get offset of pointer from the start of page*/
 UNIV_INLINE
 ulint
 page_offset(

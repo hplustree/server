@@ -67,7 +67,7 @@ static ulint srv_data_read, srv_data_written;
 
 MYSQL_PLUGIN_IMPORT extern my_bool lower_case_file_system;
 
-
+/*information about tablespace*/
 /*
 		IMPLEMENTATION OF THE TABLESPACE MEMORY CACHE
 		=============================================

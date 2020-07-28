@@ -2319,6 +2319,35 @@ btr_page_empty(
 }
 
 /*************************************************************//**
+Copies file segment header from seg_hdr to new_seg_hdr.*/
+static
+void
+btr_copy_seg_hdr(
+    fseg_header_t* 	seg_hdr,	/*!< in: seg header to copy from */
+    fseg_header_t* 	new_seg_hdr,	/*!< in: seg header to copy to  */
+    mtr_t*		mtr) 		/*!< in: mtr*/
+{
+	ulint 	page_offset;
+	ulint 	page_no;
+	ulint 	space;
+
+	page_offset = mach_read_from_2(seg_hdr + FSEG_HDR_OFFSET);
+	page_no = mach_read_from_2(seg_hdr + FSEG_HDR_PAGE_NO);
+	space = mach_read_from_2(seg_hdr + FSEG_HDR_SPACE);
+
+
+	mlog_write_ulint(new_seg_hdr + FSEG_HDR_OFFSET, page_offset,
+			 MLOG_2BYTES, mtr);
+
+	mlog_write_ulint(new_seg_hdr + FSEG_HDR_PAGE_NO, page_no,
+			 MLOG_4BYTES, mtr);
+
+	mlog_write_ulint(new_seg_hdr + FSEG_HDR_SPACE, space,
+			 MLOG_4BYTES, mtr);
+
+}
+
+/*************************************************************//**
 Makes tree one level higher by splitting the root, and inserts
 the tuple. It is assumed that mtr contains an x-latch on the tree.
 NOTE that the operation of this function must always succeed,
@@ -2353,6 +2382,8 @@ btr_root_raise_and_insert(
 	page_zip_des_t*	new_page_zip;
 	buf_block_t*	root_block;
 	buf_block_t*	new_block;
+	fseg_header_t* 	root_header;
+	fseg_header_t* 	new_page_header;
 
 	root = btr_cur_get_page(cursor);
 	root_block = btr_cur_get_block(cursor);
@@ -2405,6 +2436,43 @@ btr_root_raise_and_insert(
 	/* Set the next node and previous node fields of new page */
 	btr_page_set_next(new_page, new_page_zip, FIL_NULL, mtr);
 	btr_page_set_prev(new_page, new_page_zip, FIL_NULL, mtr);
+
+	if (!dict_index_is_ibuf(index)) {
+		/* Set segment header of new node */
+		root_header = root + PAGE_HEADER + PAGE_BTR_SEG_OWN;
+
+		if (level == 0) {
+			/* Store root page header as parent segment header in its child
+			 * here child is leaf node */
+			new_page_header =
+			    new_page + PAGE_HEADER + PAGE_BTR_SEG_PARENT;
+		} else {
+			/* Store root page header as own segment header in its child
+			 * here child is internal node */
+			new_page_header =
+			    new_page + PAGE_HEADER + PAGE_BTR_SEG_OWN;
+		}
+
+		btr_copy_seg_hdr(root_header, new_page_header, mtr);
+
+		/* Create new segment for root if root is at non zero level.
+		 * Add new segment header as parent segment header in root's child.
+		 * here child is internal node */
+
+		if (level != 0) {
+
+			root_block = fseg_create(
+			    dict_index_get_space(index), buf_block_get_page_no(root_block),
+			    PAGE_HEADER + PAGE_BTR_SEG_OWN, mtr);
+
+			root_header = buf_block_get_frame(root_block) + PAGE_HEADER + PAGE_BTR_SEG_OWN;
+
+			new_page_header = new_page + PAGE_HEADER + PAGE_BTR_SEG_PARENT;
+
+			btr_copy_seg_hdr(root_header, new_page_header, mtr);
+
+		}
+	}
 
 	/* Copy the records from root to the new page one by one. */
 

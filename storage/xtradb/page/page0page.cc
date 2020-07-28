@@ -656,7 +656,7 @@ page_copy_rec_list_end(
 /*===================*/
 	buf_block_t*	new_block,	/*!< in/out: index page to copy to */
 	buf_block_t*	block,		/*!< in: index page containing rec */
-	rec_t*		rec,		/*!< in: record on page */
+	rec_t*		rec,		/*!< in: record on page */ /*'infimum'*/
 	dict_index_t*	index,		/*!< in: record descriptor */
 	mtr_t*		mtr)		/*!< in: mtr */
 {
@@ -664,7 +664,7 @@ page_copy_rec_list_end(
 	page_zip_des_t*	new_page_zip	= buf_block_get_page_zip(new_block);
 	page_t*		page		= page_align(rec);
 	rec_t*		ret		= page_rec_get_next(
-		page_get_infimum_rec(new_page));
+		page_get_infimum_rec(new_page)); /*'supremum'*/
 	ulint		log_mode	= 0; /* remove warning */
 
 #ifdef UNIV_ZIP_DEBUG

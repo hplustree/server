@@ -1477,7 +1477,7 @@ rec_offs_extra_size(
 
 /**********************************************************//**
 Returns the total size of a physical record.
-@return	size */
+@return	size */ /*total size of physical record.*/
 UNIV_INLINE
 ulint
 rec_offs_size(

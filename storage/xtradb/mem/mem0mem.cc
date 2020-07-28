@@ -389,7 +389,7 @@ mem_heap_create_block_func(
 #endif
 	mem_block_set_len(block, len);
 	mem_block_set_type(block, type);
-	mem_block_set_free(block, MEM_BLOCK_HEADER_SIZE);
+	mem_block_set_free(block, MEM_BLOCK_HEADER_SIZE); /*MEM_BLOCK_HEADER_SIZE =120*/
 	mem_block_set_start(block, MEM_BLOCK_HEADER_SIZE);
 
 	if (UNIV_UNLIKELY(heap == NULL)) {

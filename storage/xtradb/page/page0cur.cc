@@ -1813,12 +1813,12 @@ page_copy_rec_list_end_to_created_page(
 
 	do {
 		offsets = rec_get_offsets(rec, index, offsets,
-					  ULINT_UNDEFINED, &heap);
-		insert_rec = rec_copy(heap_top, rec, offsets);
+					  ULINT_UNDEFINED, &heap); /*'rec' changes in each iteration. It finds offset of that record pointed by rec*/
+		insert_rec = rec_copy(heap_top, rec, offsets); /*physically move record from source to dest*/
 
-		if (page_is_comp(new_page)) {
+		if (page_is_comp(new_page)) { /*set extra bytes information in record structure*/
 			rec_set_next_offs_new(prev_rec,
-					      page_offset(insert_rec));
+					      page_offset(insert_rec)); /* 4 byte relative pointer in extra byte in record structure*/
 
 			rec_set_n_owned_new(insert_rec, NULL, 0);
 			rec_set_heap_no_new(insert_rec,
@@ -1836,15 +1836,15 @@ page_copy_rec_list_end_to_created_page(
 		n_recs++;
 
 		if (UNIV_UNLIKELY
-		    (count == (PAGE_DIR_SLOT_MAX_N_OWNED + 1) / 2)) {
+		    (count == (PAGE_DIR_SLOT_MAX_N_OWNED + 1) / 2)) { /*this condition is to change page dir slot when max slot reach*/
 
 			slot_index++;
 
-			slot = page_dir_get_nth_slot(new_page, slot_index);
+			slot = page_dir_get_nth_slot(new_page, slot_index);/*change dir slot*/
 
-			page_dir_slot_set_rec(slot, insert_rec);
-			page_dir_slot_set_n_owned(slot, NULL, count);
-
+			page_dir_slot_set_rec(slot, insert_rec);/* add offset of record from start of page to page dir slot*/
+			page_dir_slot_set_n_owned(slot, NULL, count);/*set n_owned field in record's extra byte, record's offset within page is stored in slot*/
+			/*n_owned contains number of record prior this directory slot*/
 			count = 0;
 		}
 
@@ -1898,12 +1898,12 @@ page_copy_rec_list_end_to_created_page(
 		rec_set_next_offs_old(insert_rec, PAGE_OLD_SUPREMUM);
 	}
 
-	slot = page_dir_get_nth_slot(new_page, 1 + slot_index);
+	slot = page_dir_get_nth_slot(new_page, 1 + slot_index); /*last slot for supremum*/
 
 	page_dir_slot_set_rec(slot, page_get_supremum_rec(new_page));
-	page_dir_slot_set_n_owned(slot, NULL, count + 1);
+	page_dir_slot_set_n_owned(slot, NULL, count + 1); /*change n_owned for supremum and set to prior record + supremum*/
 
-	page_dir_set_n_slots(new_page, NULL, 2 + slot_index);
+	page_dir_set_n_slots(new_page, NULL, 2 + slot_index); /* slot index + infimum(0)+supremum*/
 	page_header_set_ptr(new_page, NULL, PAGE_HEAP_TOP, heap_top);
 	page_dir_set_n_heap(new_page, NULL, PAGE_HEAP_NO_USER_LOW + n_recs);
 	page_header_set_field(new_page, NULL, PAGE_N_RECS, n_recs);

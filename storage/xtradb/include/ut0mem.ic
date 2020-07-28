@@ -31,7 +31,7 @@ target are not overlapping.
 * @param dest	in: copy to
 * @param sour	in: copy from
 * @param n	in: number of bytes to copy
-* @return	dest */
+* @return	dest */ /*low level function to copy memory area*/
 UNIV_INLINE
 void*
 ut_memcpy(void* dest, const void* sour, ulint n)

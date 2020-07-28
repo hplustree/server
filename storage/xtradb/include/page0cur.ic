@@ -288,7 +288,7 @@ page_cur_tuple_insert(
 			cursor, index, rec, *offsets, mtr);
 	} else {
 		rec = page_cur_insert_rec_low(cursor->rec,
-					      index, rec, *offsets, mtr);
+					      index, rec, *offsets, mtr); /*check for null value here for split*/
 	}
 
 	ut_ad(!rec || !cmp_dtuple_rec(tuple, rec, *offsets));

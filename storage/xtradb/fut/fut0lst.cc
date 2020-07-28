@@ -19,7 +19,7 @@ this program; if not, write to the Free Software Foundation, Inc.,
 /******************************************************************//**
 @file fut/fut0lst.cc
 File-based list utilities
-
+list base node and list node utilities
 Created 11/28/1995 Heikki Tuuri
 ***********************************************************************/
 
@@ -59,7 +59,6 @@ flst_add_to_empty(
 	/* Update first and last fields of base node */
 	flst_write_addr(base + FLST_FIRST, node_addr, mtr);
 	flst_write_addr(base + FLST_LAST, node_addr, mtr);
-
 	/* Set prev and next fields of node to add */
 	flst_write_addr(node + FLST_PREV, fil_addr_null, mtr);
 	flst_write_addr(node + FLST_NEXT, fil_addr_null, mtr);
@@ -430,3 +429,4 @@ flst_print(
 		(ulong) page_get_page_no(frame),
 		(ulong) page_offset(base), (ulong) len);
 }
+

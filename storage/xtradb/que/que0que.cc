@@ -51,7 +51,7 @@ Created 5/27/1996 Heikki Tuuri
 of SQL execution in the UNIV_SQL_DEBUG version */
 UNIV_INTERN ibool	que_trace_on		= FALSE;
 #endif /* UNIV_DEBUG */
-
+/*query graph intro*/
 /* Short introduction to query graphs
    ==================================
 

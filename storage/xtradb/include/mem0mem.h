@@ -36,8 +36,9 @@ Created 6/9/1994 Heikki Tuuri
 #include "ut0lst.h"
 #include "mach0data.h"
 
-/* -------------------- MEMORY HEAPS ----------------------------- */
+/*memory heap information*/
 
+/* -------------------- MEMORY HEAPS ----------------------------- */
 /* A block of a memory heap consists of the info structure
 followed by an area of memory */
 typedef struct mem_block_info_t	mem_block_t;
@@ -48,7 +49,7 @@ typedef mem_block_t		mem_heap_t;
 /* Types of allocation for memory heaps: DYNAMIC means allocation from the
 dynamic memory pool of the C compiler, BUFFER means allocation from the
 buffer pool; the latter method is used for very big heaps */
-
+/*types of allocation for memory heap*/
 #define MEM_HEAP_DYNAMIC	0	/* the most common type */
 #define MEM_HEAP_BUFFER		1
 #define MEM_HEAP_BTR_SEARCH	2	/* this flag can optionally be

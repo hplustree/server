@@ -103,7 +103,7 @@ row_purge_reposition_pcur(
 
 	} else {
 		node->found_clust = row_search_on_row_ref(
-			&node->pcur, mode, node->table, node->ref, mtr);
+			&node->pcur, mode, node->table, node->ref, mtr); /*find p cursor position */
 
 		if (node->found_clust) {
 			btr_pcur_store_position(&node->pcur, mtr);
@@ -124,8 +124,8 @@ Removes a delete marked clustered index record if possible.
 @retval false if the row was modified after the delete marking */
 static MY_ATTRIBUTE((nonnull, warn_unused_result))
 bool
-row_purge_remove_clust_if_poss_low(
-/*===============================*/
+row_purge_remove_clust_if_poss_low(/*do optimistic delete for leaf modification mode.If it fails then do */
+/*===============================*/ /*pessimistic delete in next function call when mode is changed to tree modification.*/
 	purge_node_t*	node,	/*!< in/out: row purge node */
 	ulint		mode)	/*!< in: BTR_MODIFY_LEAF or BTR_MODIFY_TREE */
 {
@@ -147,7 +147,7 @@ row_purge_remove_clust_if_poss_low(
 	log_free_check();
 	mtr_start(&mtr);
 
-	if (!row_purge_reposition_pcur(mode, node, &mtr)) {
+	if (!row_purge_reposition_pcur(mode, node, &mtr)) {/*position cursor*/
 		/* The record was already removed. */
 		goto func_exit;
 	}
@@ -163,14 +163,14 @@ row_purge_remove_clust_if_poss_low(
 	}
 
 	if (mode == BTR_MODIFY_LEAF) {
-		success = btr_cur_optimistic_delete(
+		success = btr_cur_optimistic_delete(/*delete record if no compression needed in page else return false without deleting record*/
 			btr_pcur_get_btr_cur(&node->pcur), 0, &mtr);
 	} else {
 		dberr_t	err;
 		ut_ad(mode == BTR_MODIFY_TREE);
 		btr_cur_pessimistic_delete(
 			&err, FALSE, btr_pcur_get_btr_cur(&node->pcur), 0,
-			RB_NONE, &mtr);
+			RB_NONE, &mtr);/*delete record and do page merge if certain condition satisfied*/
 
 		switch (err) {
 		case DB_SUCCESS:
@@ -206,8 +206,8 @@ marking.
 of file space. */
 static MY_ATTRIBUTE((nonnull, warn_unused_result))
 bool
-row_purge_remove_clust_if_poss(
-/*===========================*/
+row_purge_remove_clust_if_poss( /*actually removes cluster index record. It first tries to remove with only leaf level */
+/*===========================*/ /*modification but if it fails then remove with index tree modification mode*/
 	purge_node_t*	node)	/*!< in/out: row purge node */
 {
 	if (row_purge_remove_clust_if_poss_low(node, BTR_MODIFY_LEAF)) {

@@ -12707,7 +12707,7 @@ ha_innobase::create(
 	Drop table etc. do this latching in row0mysql.cc. */
 
 	row_mysql_lock_data_dictionary(trx);
-
+	/*add table and column defintion*/
 	error = create_table_def(trx, form, norm_name, temp_path,
 				 remote_path, flags, flags2,
 				 form->s->option_struct);
@@ -12720,8 +12720,9 @@ ha_innobase::create(
 	if (form->s->keys == 0 || primary_key_no == -1) {
 		/* Create an index which is used as the clustered index;
 		order the rows by their row id which is internally generated
-		by InnoDB */
+		by InnoDB*/
 
+		/*create table where no primary key is specified*/
 		error = create_clustered_index_when_no_primary(
 			trx, flags, norm_name);
 		if (error) {
@@ -12732,6 +12733,7 @@ ha_innobase::create(
 	if (primary_key_no != -1) {
 		/* In InnoDB the clustered index must always be created
 		first */
+		/*craete index tree*/
 		if ((error = create_index(trx, form, flags, norm_name,
 					  (uint) primary_key_no))) {
 			goto cleanup;

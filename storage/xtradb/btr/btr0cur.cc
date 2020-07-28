@@ -3626,9 +3626,12 @@ btr_cur_pessimistic_delete(
 	ibool		ret		= FALSE;
 	mem_heap_t*	heap;
 	ulint*		offsets;
+	ibool 		p;
 
 	block = btr_cur_get_block(cursor);
 	page = buf_block_get_frame(block);
+	p=page_is_leaf(page);
+	fprintf(stderr, "page is leaf: %lu\n", (ulong) p);
 	index = btr_cur_get_index(cursor);
 
 	ut_ad(flags == 0 || flags == BTR_CREATE_FLAG);

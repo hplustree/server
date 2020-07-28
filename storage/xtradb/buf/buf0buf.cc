@@ -143,7 +143,7 @@ _increment_page_get_statistics(buf_block_t* block, trx_t* trx)
 	trx->distinct_page_access_hash[block_hash_byte] |= (byte) 0x01 << block_hash_offset;
 	return;
 }
-
+/*bufferpool implementation*/
 /*
 		IMPLEMENTATION OF THE BUFFER POOL
 		=================================

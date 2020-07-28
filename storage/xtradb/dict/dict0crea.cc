@@ -247,7 +247,7 @@ dict_create_sys_columns_tuple(
 
 /***************************************************************//**
 Builds a table definition to insert.
-@return	DB_SUCCESS or error code */
+@return	DB_SUCCESS or error code */ /*table creation step and page allocation in new tablespace*/
 static MY_ATTRIBUTE((nonnull, warn_unused_result))
 dberr_t
 dict_build_table_def_step(
