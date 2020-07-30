@@ -1755,6 +1755,20 @@ btr_cur_pessimistic_insert(
 
 		ulint	n_extents = cursor->tree_height / 16 + 3;
 
+		/* Need to reserve extra space when the non-leaf page is to be splitting */
+
+		buf_block_t* block = btr_cur_get_block(cursor);
+
+		if (! page_is_leaf(buf_block_get_frame(block))){
+
+			/* reserve enough extent for new pages allocation from new segment */
+			n_extents = (page_get_n_recs(buf_block_get_frame(block)) / FSP_EXTENT_SIZE) + 1;
+
+			/* extra 2 extents for new file segment creation */
+			n_extents += 2;
+
+		}
+
 		success = fsp_reserve_free_extents(&n_reserved, index->space,
 						   n_extents, FSP_NORMAL, mtr);
 		if (!success) {
@@ -5073,8 +5087,9 @@ alloc_another:
 //			block = btr_page_alloc(index, hint_page_no,
 //					       FSP_NO_DIR, 0, alloc_mtr, &mtr);
 
-			block = btr_page_alloc(index, rec_block, hint_page_no,
-		       				alloc_mtr, &mtr);
+			block = btr_page_alloc(index, rec_block, PAGE_HEADER + PAGE_BTR_SEG_PARENT,
+					       hint_page_no, alloc_mtr, &mtr);
+
 			if (UNIV_UNLIKELY(block == NULL)) {
 				mtr_commit(&mtr);
 				error = DB_OUT_OF_FILE_SPACE;

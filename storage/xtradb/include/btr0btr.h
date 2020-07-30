@@ -719,7 +719,8 @@ buf_block_t*
 btr_page_alloc(
 /*===========*/
 	dict_index_t*	index,		/*!< in: index tree */
-	buf_block_t*	block,		/*!< in: sibling page block */
+	buf_block_t*	block,		/*!< in: page block */
+	ulint		bytes_offset,	/*!< in: bytes offset of segment header */
 	ulint		hint_page_no,	/*!< in: hint of a good page */
 	mtr_t*		mtr,		/*!< in/out: mini-transaction
 					for the allocation */
