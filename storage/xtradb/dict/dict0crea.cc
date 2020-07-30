@@ -734,9 +734,21 @@ dict_drop_index_tree(
 	ulint		zip_size;
 	const byte*	ptr;
 	ulint		len;
+	ulint		index_id;
+	dict_index_t*	index;
 
 	ut_ad(mutex_own(&(dict_sys->mutex)));
 	ut_a(!dict_table_is_comp(dict_sys->sys_indexes));
+
+	ptr = rec_get_nth_field_old(
+	    rec, DICT_FLD__SYS_INDEXES__ID, &len);
+
+	ut_ad(len == 8);
+
+	index_id = mtr_read_ulint(ptr, MLOG_8BYTES, mtr);
+
+	index = dict_index_get_if_in_cache(index_id);
+
 	ptr = rec_get_nth_field_old(
 		rec, DICT_FLD__SYS_INDEXES__PAGE_NO, &len);
 
@@ -768,7 +780,10 @@ dict_drop_index_tree(
 	/* We free all the pages but the root page first; this operation
 	may span several mini-transactions */
 
-	btr_free_but_not_root(space, zip_size, root_page_no);
+//	btr_free_but_not_root(space, zip_size, root_page_no);
+
+	btr_free_but_not_root(space, zip_size, root_page_no, index);
+
 
 	/* Then we free the root page in the same mini-transaction where
 	we write FIL_NULL to the appropriate field in the SYS_INDEXES
@@ -862,10 +877,15 @@ dict_truncate_index_tree(
 		goto create;
 	}
 
+	index = UT_LIST_GET_FIRST(table->indexes);
+
 	/* We free all the pages but the root page first; this operation
 	may span several mini-transactions */
 
-	btr_free_but_not_root(space, zip_size, root_page_no);
+//	btr_free_but_not_root(space, zip_size, root_page_no);
+
+	btr_free_but_not_root(space, zip_size, root_page_no, index);
+
 
 	/* Then we free the root page in the same mini-transaction where
 	we create the b-tree and write its new root page number to the

@@ -1835,16 +1835,21 @@ UNIV_INTERN
 void
 btr_free_but_not_root(
 /*==================*/
-	ulint	space,		/*!< in: space where created */
-	ulint	zip_size,	/*!< in: compressed page size in bytes
-				or 0 for uncompressed pages */
-	ulint	root_page_no)	/*!< in: root page number */
+    ulint		space,		/*!< in: space where created */
+    ulint		zip_size,	/*!< in: compressed page size in bytes
+					or 0 for uncompressed pages */
+    ulint		root_page_no,	/*!< in: root page number */
+    dict_index_t*	index)		/*!< in: index */
 {
-	ibool	finished;
-	page_t*	root;
-	mtr_t	mtr;
+	ibool		finished;
+	page_t*		root;
+	mtr_t		mtr;
+	btr_cur_t	cursor;
+	page_t*		page;
+	buf_block_t*	block;
+	ulint 		next_page;
+	ulint		height;
 
-leaf_loop:
 	mtr_start(&mtr);
 
 	root = btr_page_get(space, zip_size, root_page_no, RW_X_LATCH,
@@ -1861,49 +1866,106 @@ leaf_loop:
 		return;
 	});
 
+	height = btr_height_get(index, &mtr);
+
+for(ulint i=0; i< height - 1; i++) {
+	btr_cur_open_at_index_side(true, index, BTR_MODIFY_TREE,
+				   &cursor, 0, &mtr);
+	block = page_cur_get_block(btr_cur_get_page_cur(&cursor));
+
+	page = buf_block_get_frame(block);
+
+loop:
+
 #ifdef UNIV_BTR_DEBUG
-	ut_a(btr_root_fseg_validate(FIL_PAGE_DATA + PAGE_BTR_SEG_LEAF
-				    + root, space));
-	ut_a(btr_root_fseg_validate(FIL_PAGE_DATA + PAGE_BTR_SEG_TOP
-				    + root, space));
+    ut_a(btr_root_fseg_validate(
+		    page + FIL_PAGE_DATA + PAGE_BTR_SEG_OWN, space));
+    ut_a(btr_root_fseg_validate(
+	page + FIL_PAGE_DATA + PAGE_BTR_SEG_PARENT, space));
 #endif /* UNIV_BTR_DEBUG */
 
-	/* NOTE: page hash indexes are dropped when a page is freed inside
+    	/* NOTE: page hash indexes are dropped when a page is freed inside
 	fsp0fsp. */
 
-	finished = fseg_free_step(root + PAGE_HEADER + PAGE_BTR_SEG_LEAF,
-				  &mtr);
-	mtr_commit(&mtr);
-
-	if (!finished) {
-
-		goto leaf_loop;
-	}
-top_loop:
-	mtr_start(&mtr);
-
-	root = btr_page_get(space, zip_size, root_page_no, RW_X_LATCH,
-			    NULL, &mtr);
-
-	SRV_CORRUPT_TABLE_CHECK(root,
-	{
+		finished = fseg_free_step(
+		    page + PAGE_HEADER + PAGE_BTR_SEG_PARENT, &mtr);
 		mtr_commit(&mtr);
-		return;
-	});
 
-#ifdef UNIV_BTR_DEBUG
-	ut_a(btr_root_fseg_validate(FIL_PAGE_DATA + PAGE_BTR_SEG_TOP
-				    + root, space));
-#endif /* UNIV_BTR_DEBUG */
+		if (!finished) {
+			goto loop;
+		}
 
-	finished = fseg_free_step_not_header(
-		root + PAGE_HEADER + PAGE_BTR_SEG_TOP, &mtr);
-	mtr_commit(&mtr);
-
-	if (!finished) {
-
-		goto top_loop;
+		next_page = btr_page_get_next(page, &mtr);
+		if (next_page != FIL_NULL) {
+			page = buf_page_get(space, zip_size, next_page,
+					    RW_NO_LATCH, NULL, BUF_GET, mtr);
+			goto loop;
+		}
 	}
+
+//	root = btr_page_get(space, zip_size, root_page_no, RW_X_LATCH,
+//			    NULL, &mtr);
+//
+//leaf_loop:
+//	mtr_start(&mtr);
+//
+//	root = btr_page_get(space, zip_size, root_page_no, RW_X_LATCH,
+//			    NULL, &mtr);
+//
+//	if (!root) {
+//		mtr_commit(&mtr);
+//		return;
+//	}
+//
+//	SRV_CORRUPT_TABLE_CHECK(root,
+//	{
+//		mtr_commit(&mtr);
+//		return;
+//	});
+//
+//#ifdef UNIV_BTR_DEBUG
+//	ut_a(btr_root_fseg_validate(FIL_PAGE_DATA + PAGE_BTR_SEG_LEAF
+//				    + root, space));
+//	ut_a(btr_root_fseg_validate(FIL_PAGE_DATA + PAGE_BTR_SEG_TOP
+//				    + root, space));
+//#endif /* UNIV_BTR_DEBUG */
+//
+//	/* NOTE: page hash indexes are dropped when a page is freed inside
+//	fsp0fsp. */
+//
+//	finished = fseg_free_step(root + PAGE_HEADER + PAGE_BTR_SEG_LEAF,
+//				  &mtr);
+//	mtr_commit(&mtr);
+//
+//	if (!finished) {
+//
+//		goto leaf_loop;
+//	}
+//top_loop:
+//	mtr_start(&mtr);
+//
+//	root = btr_page_get(space, zip_size, root_page_no, RW_X_LATCH,
+//			    NULL, &mtr);
+//
+//	SRV_CORRUPT_TABLE_CHECK(root,
+//	{
+//		mtr_commit(&mtr);
+//		return;
+//	});
+//
+//#ifdef UNIV_BTR_DEBUG
+//	ut_a(btr_root_fseg_validate(FIL_PAGE_DATA + PAGE_BTR_SEG_TOP
+//				    + root, space));
+//#endif /* UNIV_BTR_DEBUG */
+//
+//	finished = fseg_free_step_not_header(
+//		root + PAGE_HEADER + PAGE_BTR_SEG_TOP, &mtr);
+//	mtr_commit(&mtr);
+//
+//	if (!finished) {
+//
+//		goto top_loop;
+//	}
 }
 /************************************************************//**
 Frees the B-tree root page. */
