@@ -438,16 +438,6 @@ btr_free_root(
 	ulint	root_page_no,	/*!< in: root page number */
 	mtr_t*	mtr)		/*!< in/out: mini-transaction */
 	MY_ATTRIBUTE((nonnull));
-/************************************************************//**
-Frees the B-tree root page. */
-static
-void
-btr_free_root_page(
-    ulint	space,		/*!< in: space where created */
-    ulint	zip_size,	/*!< in: compressed page size in bytes
-				or 0 for uncompressed pages */
-    ulint	root_page_no,	/*!< in: root page number */
-    mtr_t*	mtr);	/*!< in/out: mini-transaction */
 /*************************************************************//**
 Makes tree one level higher by splitting the root, and inserts
 the tuple. It is assumed that mtr contains an x-latch on the tree.
