@@ -1292,11 +1292,15 @@ btr_get_size_and_reserved(
 {
 	fseg_header_t*	seg_header;
 	page_t*		root;
+	page_t* 	page;
+	page_t*		next_page;
 	ulint		n=ULINT_UNDEFINED;
 	btr_cur_t 	cursor;
 	ulint 		height;
 	ulint		dummy;
-
+	buf_block_t*	block;
+	ulint 		next_page_no;
+	ulint		zip_size;
 
 	ut_ad(mtr_memo_contains(mtr, dict_index_get_lock(index),
 				MTR_MEMO_S_LOCK));
@@ -1309,6 +1313,7 @@ btr_get_size_and_reserved(
 	}
 
 	root = btr_root_get(index, mtr);
+	zip_size = dict_table_zip_size(index->table);
 	*used = 0;
 
 	if (root) {
@@ -1332,13 +1337,24 @@ btr_get_size_and_reserved(
 			dummy = 0;
 			btr_cur_open_at_index_side(true, index, BTR_SEARCH_LEAF,
 						   &cursor, level, mtr);
-			buf_block_t* block = page_cur_get_block(btr_cur_get_page_cur(&cursor));
-			page_t* page = buf_block_get_frame(block);
+			block = page_cur_get_block(btr_cur_get_page_cur(&cursor));
+			page = buf_block_get_frame(block);
 
+		loop:
 			seg_header = page + PAGE_HEADER + PAGE_BTR_SEG_OWN;
 			n += fseg_n_reserved_pages(seg_header, &dummy, mtr);
 
 			*used+=dummy;
+
+			next_page_no = btr_page_get_next(page, mtr);
+
+			if(next_page_no != FIL_NULL){
+				block = buf_page_get(index->space, zip_size, next_page_no, RW_NO_LATCH, mtr);
+				page = buf_block_get_frame(block);
+
+				goto loop;
+
+			}
 
 			if (flag == BTR_N_LEAF_PAGES){
 				break;
