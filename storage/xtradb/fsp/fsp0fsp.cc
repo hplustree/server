@@ -1371,7 +1371,7 @@ Allocates a single free page from a space. The page is marked as used.
 @retval block, rw_lock_x_lock_count(&block->lock) == 1 if allocation succeeded
 (init_mtr == mtr, or the page was not previously freed in mtr)
 @retval block (not allocated or initialized) otherwise */
-static MY_ATTRIBUTE((warn_unused_result))
+MY_ATTRIBUTE((warn_unused_result))
 buf_block_t*
 fsp_alloc_free_page(
 /*================*/
@@ -1476,7 +1476,6 @@ fsp_alloc_free_page(
 
 /**********************************************************************//**
 Frees a single page of a space. The page is marked as free and clean. */
-static
 void
 fsp_free_page(
 /*==========*/

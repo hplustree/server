@@ -846,34 +846,34 @@ btr_height_get(
 Checks a file segment header within a B-tree root page and updates
 the segment header space id.
 @return	TRUE if valid */
-static
-bool
-btr_root_fseg_adjust_on_import(
-/*===========================*/
-	fseg_header_t*	seg_header,	/*!< in/out: segment header */
-	page_zip_des_t*	page_zip,	/*!< in/out: compressed page,
-					or NULL */
-	ulint		space,		/*!< in: tablespace identifier */
-	mtr_t*		mtr)		/*!< in/out: mini-transaction */
-{
-	ulint	offset = mach_read_from_2(seg_header + FSEG_HDR_OFFSET);
-
-	if (offset < FIL_PAGE_DATA
-	    || offset > UNIV_PAGE_SIZE - FIL_PAGE_DATA_END) {
-
-		return(FALSE);
-
-	} else if (page_zip) {
-		mach_write_to_4(seg_header + FSEG_HDR_SPACE, space);
-		page_zip_write_header(page_zip, seg_header + FSEG_HDR_SPACE,
-				      4, mtr);
-	} else {
-		mlog_write_ulint(seg_header + FSEG_HDR_SPACE,
-				 space, MLOG_4BYTES, mtr);
-	}
-
-	return(TRUE);
-}
+//static
+//bool
+//btr_root_fseg_adjust_on_import(
+///*===========================*/
+//	fseg_header_t*	seg_header,	/*!< in/out: segment header */
+//	page_zip_des_t*	page_zip,	/*!< in/out: compressed page,
+//					or NULL */
+//	ulint		space,		/*!< in: tablespace identifier */
+//	mtr_t*		mtr)		/*!< in/out: mini-transaction */
+//{
+//	ulint	offset = mach_read_from_2(seg_header + FSEG_HDR_OFFSET);
+//
+//	if (offset < FIL_PAGE_DATA
+//	    || offset > UNIV_PAGE_SIZE - FIL_PAGE_DATA_END) {
+//
+//		return(FALSE);
+//
+//	} else if (page_zip) {
+//		mach_write_to_4(seg_header + FSEG_HDR_SPACE, space);
+//		page_zip_write_header(page_zip, seg_header + FSEG_HDR_SPACE,
+//				      4, mtr);
+//	} else {
+//		mlog_write_ulint(seg_header + FSEG_HDR_SPACE,
+//				 space, MLOG_4BYTES, mtr);
+//	}
+//
+//	return(TRUE);
+//}
 
 /**************************************************************//**
 Checks and adjusts the root node of a tree during IMPORT TABLESPACE.
@@ -888,7 +888,7 @@ btr_root_adjust_on_import(
 	mtr_t		mtr;
 	page_t*		page;
 	buf_block_t*	block;
-	page_zip_des_t*	page_zip;
+//	page_zip_des_t*	page_zip;
 	dict_table_t*	table		= index->table;
 	ulint		space_id	= dict_index_get_space(index);
 	ulint		zip_size	= dict_table_zip_size(table);
@@ -905,7 +905,7 @@ btr_root_adjust_on_import(
 		space_id, zip_size, root_page_no, RW_X_LATCH, (dict_index_t*)index, &mtr);
 
 	page = buf_block_get_frame(block);
-	page_zip = buf_block_get_page_zip(block);
+//	page_zip = buf_block_get_page_zip(block);
 
 	/* Check that this is a B-tree page and both the PREV and NEXT
 	pointers are FIL_NULL, because the root page does not have any
@@ -1293,7 +1293,7 @@ btr_get_size_and_reserved(
 	fseg_header_t*	seg_header;
 	page_t*		root;
 	page_t* 	page;
-	page_t*		next_page;
+//	page_t*		next_page;
 	ulint		n=ULINT_UNDEFINED;
 	btr_cur_t 	cursor;
 	ulint 		height;
@@ -2044,7 +2044,7 @@ btr_free_root(
 	mtr_t*	mtr)		/*!< in/out: mini-transaction */
 {
 	buf_block_t*	block;
-	fseg_header_t*	header;
+//	fseg_header_t*	header;
 
 	block = btr_block_get(space, zip_size, root_page_no, RW_X_LATCH,
 			      NULL, mtr);
@@ -5268,7 +5268,7 @@ btr_validate_level(
 //		/* Leaf pages are managed in their own file segment. */
 //		seg -= PAGE_BTR_SEG_TOP - PAGE_BTR_SEG_LEAF;
 //	}
-	seg = page + PAGE_BTR_SEG_PARENT;
+	seg = page + PAGE_HEADER + PAGE_BTR_SEG_PARENT;
 
 loop:
 	mem_heap_empty(heap);

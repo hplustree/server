@@ -1925,18 +1925,28 @@ PageConverter::update_index_page(
 	}
 
 	if (m_index && block->page.offset == m_index->m_page_no) {
-		byte *b = FIL_PAGE_DATA + PAGE_BTR_SEG_LEAF + FSEG_HDR_SPACE
-			+ page;
+//		byte *b = FIL_PAGE_DATA + PAGE_BTR_SEG_LEAF + FSEG_HDR_SPACE
+//			+ page;
+		byte *b = FIL_PAGE_DATA + PAGE_BTR_SEG_OWN + FSEG_HDR_SPACE
+			  + page;
 		mach_write_to_4(b, block->page.space);
 
-		memcpy(FIL_PAGE_DATA + PAGE_BTR_SEG_TOP + FSEG_HDR_SPACE
+//		memcpy(FIL_PAGE_DATA + PAGE_BTR_SEG_TOP + FSEG_HDR_SPACE
+//		       + page, b, 4);
+		memcpy(FIL_PAGE_DATA + PAGE_BTR_SEG_PARENT + FSEG_HDR_SPACE
 		       + page, b, 4);
 		if (UNIV_LIKELY_NULL(block->page.zip.data)) {
+//			memcpy(&block->page.zip.data[FIL_PAGE_DATA
+//						     + PAGE_BTR_SEG_TOP
+//						     + FSEG_HDR_SPACE], b, 4);
+//			memcpy(&block->page.zip.data[FIL_PAGE_DATA
+//						     + PAGE_BTR_SEG_LEAF
+//						     + FSEG_HDR_SPACE], b, 4);
 			memcpy(&block->page.zip.data[FIL_PAGE_DATA
-						     + PAGE_BTR_SEG_TOP
+						     + PAGE_BTR_SEG_PARENT
 						     + FSEG_HDR_SPACE], b, 4);
 			memcpy(&block->page.zip.data[FIL_PAGE_DATA
-						     + PAGE_BTR_SEG_LEAF
+						     + PAGE_BTR_SEG_OWN
 						     + FSEG_HDR_SPACE], b, 4);
 		}
 	}
