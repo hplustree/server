@@ -1293,7 +1293,10 @@ btr_get_size_and_reserved(
 	fseg_header_t*	seg_header;
 	page_t*		root;
 	ulint		n=ULINT_UNDEFINED;
+	btr_cur_t 	cursor;
+	ulint 		height;
 	ulint		dummy;
+
 
 	ut_ad(mtr_memo_contains(mtr, dict_index_get_lock(index),
 				MTR_MEMO_S_LOCK));
@@ -1310,20 +1313,63 @@ btr_get_size_and_reserved(
 
 	if (root) {
 
-		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+		ut_ad(!dict_index_is_ibuf(index));
+		height = btr_page_get_level(root, mtr);
 
-		n = fseg_n_reserved_pages(seg_header, used, mtr);
+		if (height == 0) {
 
-		if (flag == BTR_TOTAL_SIZE) {
-			seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_TOP;
+			seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_OWN;
+			n = fseg_n_reserved_pages(seg_header, used, mtr);
 
+			ut_ad(*used == 0);
+			ut_ad(n == 0);
+
+			return (n);
+		}
+
+		for(ulint level=1; level<=height ; level++){
+
+			dummy = 0;
+			btr_cur_open_at_index_side(true, index, BTR_SEARCH_LEAF,
+						   &cursor, level, mtr);
+			buf_block_t* block = page_cur_get_block(btr_cur_get_page_cur(&cursor));
+			page_t* page = buf_block_get_frame(block);
+
+			seg_header = page + PAGE_HEADER + PAGE_BTR_SEG_OWN;
 			n += fseg_n_reserved_pages(seg_header, &dummy, mtr);
-			*used += dummy;
+
+			*used+=dummy;
+
+			if (flag == BTR_N_LEAF_PAGES){
+				break;
+			}
 
 		}
+
+		/* Add page count for root node in number pages reserved and used by index
+		* because root page is not allocated from any file segment */
+		if (flag == BTR_TOTAL_SIZE){
+			n+=1;
+			*used+=1;
+		}
+
 	}
 
 	return(n);
+
+//		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+//
+//		n = fseg_n_reserved_pages(seg_header, used, mtr);
+//
+//		if (flag == BTR_TOTAL_SIZE) {
+//			seg_header =
+//			    root + PAGE_HEADER + PAGE_BTR_SEG_TOP;
+//
+//			n += fseg_n_reserved_pages(seg_header, &dummy,
+//						   mtr);
+//			*used += dummy;
+//		}
+
 }
 
 /**************************************************************//**
