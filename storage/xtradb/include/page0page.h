@@ -83,11 +83,12 @@ typedef	byte		page_header_t;
 #define	PAGE_INDEX_ID	 28	/* index id where the page belongs.
 				This field should not be written to after
 				page creation. */
+#define	PAGE_REL_OFFSET	 36 	/* Relative id of index page. */
 //#define PAGE_BTR_SEG_LEAF 36	/* file segment header for the leaf pages in
 //				a B-tree: defined only on the root page of a
 //				B-tree, but not in the root of an ibuf tree */
 
-#define PAGE_BTR_SEG_OWN 36	/* file segment header of page's own segment in
+#define PAGE_BTR_SEG_OWN 38	/* file segment header of page's own segment in
 				a B-tree: not defined in the root of an ibuf tree */
 
 #define PAGE_BTR_IBUF_FREE_LIST	PAGE_BTR_SEG_OWN
@@ -103,11 +104,11 @@ typedef	byte		page_header_t;
 //				a B-tree, but not in the root of an ibuf
 //				tree */
 
-#define PAGE_BTR_SEG_PARENT (36 + FSEG_HEADER_SIZE)
+#define PAGE_BTR_SEG_PARENT (38 + FSEG_HEADER_SIZE)
 				/* file segment header of page's parent in a
 				B-tree: not defined in the root of an ibuf tree */
 /*----*/
-#define PAGE_DATA	(PAGE_HEADER + 36 + 2 * FSEG_HEADER_SIZE)
+#define PAGE_DATA	(PAGE_HEADER + 38 + 2 * FSEG_HEADER_SIZE)
 				/* start of data on the page */
 
 #define PAGE_OLD_INFIMUM	(PAGE_DATA + 1 + REC_N_OLD_EXTRA_BYTES)
