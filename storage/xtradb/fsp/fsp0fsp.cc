@@ -192,6 +192,7 @@ fseg_alloc_free_page_low(
 	fseg_inode_t*	seg_inode, /*!< in/out: segment inode */
 	ulint		hint,	/*!< in: hint of which page would be
 				desirable */
+	ulint*		rel_idx,
 	mtr_t*		mtr,	/*!< in/out: mini-transaction */
 	mtr_t*		init_mtr)/*!< in/out: mtr or another mini-transaction
 				in which the page should be initialized.
@@ -2583,6 +2584,7 @@ fseg_alloc_free_page_low(
 	fseg_inode_t*	seg_inode, /*!< in/out: segment inode */
 	ulint		hint,	/*!< in: hint of which page would be
 				desirable */
+	ulint*		rel_idx,
 	mtr_t*		mtr,	/*!< in/out: mini-transaction */
 	mtr_t*		init_mtr)/*!< in/out: mtr or another mini-transaction
 				in which the page should be initialized.
@@ -2705,6 +2707,8 @@ fseg_alloc_free_page_low(
 			fseg_set_nth_frag_page_no(
 			    seg_inode, n, buf_block_get_page_no(block),
 			    mtr);
+
+			*rel_idx = n;
 		}
 
 		/* fsp_alloc_free_page() invoked fsp_init_file_page()
@@ -2741,6 +2745,10 @@ fseg_alloc_free_page_low(
 			next_page_offset = page_no + 1;
 //			mlog_write_ulint(seg_inode + FSEG_NEXT_FREE, page_no + 1,
 //					 MLOG_4BYTES, mtr);
+
+			*rel_idx =
+			    32 + (flst_get_len(seg_inode + FSEG_EXTENT, mtr) *
+				(ret_page % FSP_EXTENT_SIZE));
 		}
 		/*-----------------------------------------------------------*/
 	} else {
@@ -2756,6 +2764,10 @@ fseg_alloc_free_page_low(
 			next_page_offset = ret_page + 1;
 //			mlog_write_ulint(seg_inode + FSEG_NEXT_FREE, ret_page + 1,
 //					 MLOG_4BYTES, mtr);
+
+			*rel_idx =
+			    32 + (flst_get_len(seg_inode + FSEG_EXTENT, mtr) *
+				  (ret_page % FSP_EXTENT_SIZE));
 		}
 		/*-----------------------------------------------------------*/
 	}
@@ -2960,6 +2972,7 @@ fseg_alloc_free_page_general(
 				with fsp_reserve_free_extents, then there
 				is no need to do the check for this individual
 				page */
+    	ulint*		rel_idx,
 	mtr_t*		mtr,	/*!< in/out: mini-transaction */
 	mtr_t*		init_mtr)/*!< in/out: mtr or another mini-transaction
 				in which the page should be initialized.
@@ -2995,7 +3008,7 @@ fseg_alloc_free_page_general(
 //					 mtr, init_mtr);
 
 	block = fseg_alloc_free_page_low(space, zip_size,
-					 inode, hint, mtr, init_mtr);
+					 inode, hint, rel_idx, mtr, init_mtr);
 	if (!has_done_reservation) {
 		fil_space_release_free_extents(space, n_reserved);
 	}
