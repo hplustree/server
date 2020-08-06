@@ -1084,6 +1084,7 @@ btr_page_create(
 	page_zip_des_t*	page_zip,/*!< in/out: compressed page, or NULL */
 	dict_index_t*	index,	/*!< in: index */
 	ulint		level,	/*!< in: the B-tree level of the page */
+	ulint		rel_offset, /*!< in: relative offset of page to be created*/
 	mtr_t*		mtr)	/*!< in: mtr */
 {
 	page_t*		page = buf_block_get_frame(block);
@@ -1100,6 +1101,9 @@ btr_page_create(
 	}
 
 	block->check_index_page_at_flush = TRUE;
+
+	/* Set the relative offset of the new index page */
+	btr_page_set_rel_offset(page, page_zip, rel_offset, mtr);
 
 	btr_page_set_index_id(page, page_zip, index->id, mtr);
 }
@@ -1156,6 +1160,7 @@ btr_page_alloc_low(
 	buf_block_t*	block,		/*!< in: page block */
 	ulint 		bytes_offset,	/*!< in: bytes offset of segment header */
 	ulint		hint_page_no,	/*!< in: hint of a good page */
+	ulint*		rel_offset, 	/*!< in/out: relative offset of index page or NULL */
 	mtr_t*		mtr,		/*!< in/out: mini-transaction
 					for the allocation */
 	mtr_t*		init_mtr)	/*!< in/out: mtr or another
@@ -1190,7 +1195,7 @@ btr_page_alloc_low(
 //		TRUE, mtr, init_mtr);
 	buf_block_t* new_block = fseg_alloc_free_page_general(
 	    seg_header, hint_page_no,
-	    TRUE, mtr, init_mtr);
+	    TRUE, rel_offset, mtr, init_mtr);
 
 #ifdef UNIV_DEBUG_SCRUBBING
 	if (block != NULL) {
@@ -1226,6 +1231,7 @@ btr_page_alloc(
 	buf_block_t*	block,		/*!< in: page block */
 	ulint		bytes_offset,	/*!< in: bytes offset of segment header */
 	ulint		hint_page_no,	/*!< in: hint of a good page */
+    	ulint* 		rel_offset,	/*!< in/out: relative offset of index page or NULL */
 	mtr_t*		mtr,		/*!< in/out: mini-transaction
 					for the allocation */
 	mtr_t*		init_mtr)	/*!< in/out: mini-transaction
@@ -1243,7 +1249,7 @@ btr_page_alloc(
 //		index, hint_page_no, file_direction, level, mtr, init_mtr);
 
 	new_block = btr_page_alloc_low(
-	    index, block, bytes_offset, hint_page_no, mtr, init_mtr);
+	    index, block, bytes_offset, hint_page_no, rel_offset, mtr, init_mtr);
 
 	if (new_block) {
 		buf_block_dbg_add_level(new_block, SYNC_TREE_NODE_NEW);
@@ -1775,6 +1781,7 @@ btr_create(
 	buf_block_t*	block;
 	page_t*		page;
 	page_zip_des_t*	page_zip;
+	ulint*		rel_offset=NULL;
 
 	/* Create the two new segments (one, in the case of an ibuf tree) for
 	the index tree; the segment headers are put on the allocated root page
@@ -1807,7 +1814,7 @@ btr_create(
 		block = fseg_alloc_free_page(
 		    buf_block_get_frame(ibuf_hdr_block)
 		    + IBUF_HEADER + IBUF_TREE_SEG_HEADER,
-		    IBUF_TREE_ROOT_PAGE_NO, mtr);
+		    IBUF_TREE_ROOT_PAGE_NO, rel_offset, mtr);
 
 		if (block == NULL) {
 			return(FIL_NULL);
@@ -1828,6 +1835,14 @@ btr_create(
 						  btr_blob_dbg_cmp);
 		}
 #endif /* UNIV_BLOB_DEBUG */
+		prio_rw_lock_t*	latch;
+		ulint 		flags;
+
+		/* Lock is required before fsp_alloc_fre_page function call */
+
+		latch = fil_space_get_latch(space, &flags);
+		mtr_x_lock(latch, mtr);
+
 		block = fsp_alloc_free_page(space, zip_size, 0, mtr, mtr);
 
 //		block = fseg_create(space, 0,
@@ -1870,6 +1885,10 @@ btr_create(
 	/* Set the index id of the page */
 	btr_page_set_index_id(page, page_zip, index_id, mtr);
 
+	if(!dict_index_is_ibuf(index)) {
+		/* Set the relative offset of the page */
+		btr_page_set_rel_offset(page, page_zip, FIL_NULL_16, mtr);
+	}
 	/* Set the next node and previous node fields */
 	btr_page_set_next(page, page_zip, FIL_NULL, mtr);
 	btr_page_set_prev(page, page_zip, FIL_NULL, mtr);
@@ -2490,6 +2509,7 @@ btr_root_raise_and_insert(
 	buf_block_t*	new_block;
 	fseg_header_t* 	root_header;
 	fseg_header_t* 	new_page_header;
+	ulint 		rel_offset;
 
 	root = btr_cur_get_page(cursor);
 	root_block = btr_cur_get_block(cursor);
@@ -2523,8 +2543,8 @@ btr_root_raise_and_insert(
 
 //	new_block = btr_page_alloc(index, 0, FSP_NO_DIR, level, mtr, mtr);
 
-	new_block = btr_page_alloc(index, root_block, PAGE_HEADER +  PAGE_BTR_SEG_OWN
-	    ,0, mtr, mtr);
+	new_block = btr_page_alloc(index, root_block, PAGE_HEADER +  PAGE_BTR_SEG_OWN,
+				   0, &rel_offset, mtr, mtr);
 
 
 	if (new_block == NULL && os_has_said_disk_full) {
@@ -2538,7 +2558,7 @@ btr_root_raise_and_insert(
 	     || page_zip_get_size(new_page_zip)
 	     == page_zip_get_size(root_page_zip));
 
-	btr_page_create(new_block, new_page_zip, index, level, mtr);
+	btr_page_create(new_block, new_page_zip, index, level, rel_offset, mtr);
 
 	/* Set the next node and previous node fields of new page */
 	btr_page_set_next(new_page, new_page_zip, FIL_NULL, mtr);
@@ -3368,6 +3388,7 @@ btr_page_reallocation(
 	ulint		rec_traversed;
 	fseg_header_t*  child_seg_hdr;
 	fseg_header_t*  seg_hdr;
+	ulint 		rel_offset;
 
 	ut_ad(mtr_memo_contains(mtr, block, MTR_MEMO_PAGE_X_FIX));
 
@@ -3394,8 +3415,8 @@ btr_page_reallocation(
 
 		/* Allocate the new child node */
 		new_child_block = btr_page_alloc(
-		    index, block, PAGE_HEADER + PAGE_BTR_SEG_OWN, 0, mtr,
-		    mtr);
+		    index, block, PAGE_HEADER + PAGE_BTR_SEG_OWN,
+		    0, &rel_offset, mtr, mtr);
 
 
 		if (new_child_block == NULL && os_has_said_disk_full) {
@@ -3419,7 +3440,7 @@ btr_page_reallocation(
 		ut_ad(new_page_zip == page_zip);
 
 		btr_page_create(new_child_block, new_page_zip, index,
-				btr_page_get_level(child_page, mtr), mtr);
+				btr_page_get_level(child_page, mtr), rel_offset, mtr);
 
 		/* Add segment header in the new child node */
 
@@ -3550,6 +3571,7 @@ btr_page_split_and_insert(
 	ulint		n_iterations = 0;
 	rec_t*		rec;
 	ulint		n_uniq;
+	ulint 		rel_offset;
 
 	if (!*heap) {
 		*heap = mem_heap_create(1024);
@@ -3633,7 +3655,7 @@ func_start:
 
 	/* 2. Allocate a new page to the index */
 	new_block = btr_page_alloc(cursor->index, block, PAGE_HEADER + PAGE_BTR_SEG_PARENT,
-				   hint_page_no, mtr, mtr);
+				   hint_page_no, &rel_offset, mtr, mtr);
 
 	if (new_block == NULL && os_has_said_disk_full) {
 		return(NULL);
@@ -3642,7 +3664,7 @@ func_start:
 	new_page = buf_block_get_frame(new_block);
 	new_page_zip = buf_block_get_page_zip(new_block);
 	btr_page_create(new_block, new_page_zip, cursor->index,
-			btr_page_get_level(page, mtr), mtr);
+			btr_page_get_level(page, mtr), rel_offset, mtr);
 
 	if (!dict_index_is_ibuf(cursor->index)) {
 		/* Set segment header of parent in a new page. */

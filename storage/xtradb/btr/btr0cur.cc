@@ -5074,6 +5074,7 @@ btr_store_big_rec_extern_fields(
 		for (;;) {
 			buf_block_t*	block;
 			page_t*		page;
+			ulint* 		rel_offset = NULL;
 
 			mtr_start(&mtr);
 
@@ -5086,9 +5087,8 @@ btr_store_big_rec_extern_fields(
 alloc_another:
 //			block = btr_page_alloc(index, hint_page_no,
 //					       FSP_NO_DIR, 0, alloc_mtr, &mtr);
-
 			block = btr_page_alloc(index, rec_block, PAGE_HEADER + PAGE_BTR_SEG_PARENT,
-					       hint_page_no, alloc_mtr, &mtr);
+					       hint_page_no, rel_offset, alloc_mtr, &mtr);
 
 			if (UNIV_UNLIKELY(block == NULL)) {
 				mtr_commit(&mtr);

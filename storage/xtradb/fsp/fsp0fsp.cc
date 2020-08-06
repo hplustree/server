@@ -192,7 +192,7 @@ fseg_alloc_free_page_low(
 	fseg_inode_t*	seg_inode, /*!< in/out: segment inode */
 	ulint		hint,	/*!< in: hint of which page would be
 				desirable */
-	ulint*		rel_idx,
+	ulint*		rel_offset,/*!< in/out: relative offset of index page or NULL */
 	mtr_t*		mtr,	/*!< in/out: mini-transaction */
 	mtr_t*		init_mtr)/*!< in/out: mtr or another mini-transaction
 				in which the page should be initialized.
@@ -590,6 +590,39 @@ xdes_get_offset(
 	return(page_get_page_no(page_align(descr))
 	       + ((page_offset(descr) - XDES_ARR_OFFSET) / XDES_SIZE)
 	       * FSP_EXTENT_SIZE);
+}
+
+/********************************************************************//**
+Returns relative page offset of the first page in extent described by a descriptor.
+@return	relative offset of the first page in extent */
+UNIV_INLINE
+ulint
+xdes_get_rel_offset(
+/*============*/
+    xdes_t*	descr,	/*!< in: extent descriptor */
+    ulint	space,	/*!< in: space */
+    ulint	zip_size,/*!< in: compressed page size in bytes
+				or 0 for uncompressed pages */
+    mtr_t*	mtr)	/*!< in/out: mini transaction*/
+{
+	ulint 	alloc_page_no;
+	page_t* alloc_page;
+	ulint 	rel_offset;
+
+	ut_ad(descr);
+
+	ut_ad(xdes_find_bit(descr, XDES_FREE_BIT, FALSE,0, mtr) != ULINT_UNDEFINED);
+
+	alloc_page_no = xdes_get_offset(descr)
+			      + xdes_find_bit(descr, XDES_FREE_BIT, FALSE,0, mtr);
+
+	alloc_page = buf_block_get_frame(
+	    buf_page_get(space, zip_size, alloc_page_no, RW_X_LATCH, mtr));
+
+	rel_offset = mach_read_from_2(alloc_page + PAGE_HEADER + PAGE_REL_OFFSET);
+
+	return (rel_offset - (rel_offset % FSP_EXTENT_SIZE));
+
 }
 #endif /* !UNIV_HOTBACKUP */
 
@@ -2158,8 +2191,9 @@ fseg_create_general(
 	}
 
 	if (page == 0) {
-		block = fseg_alloc_free_page_low(space, zip_size,
-						 inode, 0, mtr, mtr);
+		ulint*	rel_offset=NULL;
+		block = fseg_alloc_free_page_low(space, zip_size, inode,
+						 0, rel_offset, mtr, mtr);
 
 		if (block == NULL) {
 
@@ -2439,7 +2473,6 @@ fseg_frag_free_page_remove(
 
 
 	page = buf_block_get_frame(block);
-
 	prev_page_no = btr_page_get_prev(page, mtr);
 	next_page_no = btr_page_get_next(page, mtr);
 
@@ -2565,6 +2598,58 @@ fseg_frag_free_page_get_first(
 	return (first_block);
 
 }
+/**********************************************************************//**
+Get relative offset of page to be allocated from file segment. */
+void
+fseg_get_alloc_free_page_rel_offset(
+    ulint*		rel_offset,/*!< in/out: relative offset of index page or NULL */
+    ulint		flag,	/*!< in: flag */
+    buf_block_t*	block,	/*!< in: buffer block of the page removed from frag
+ 				free list and to be allocated or NULL*/
+    xdes_t*		ret_descr,/*!< the extent of allocated page or NULL */
+    ulint		ret_page,/*!< the allocated page offset or FIl_NULL */
+    ulint		slot_no, /*!< nth slot of segment frag array or FIL_NULL */
+    fseg_inode_t*	seg_inode,/*!< in: segment inode */
+    uint 		space,	/*!< in: space id */
+    ulint		zip_size, /*!< in: compressed page size in bytes
+				or 0 for uncompressed pages */
+    mtr_t*		mtr)	/*!< in/out: mini-transaction */
+{
+	ut_ad(flag == FSEG_PAGE_FROM_ANY_EXTENT || flag == FSEG_PAGE_FROM_FRAG_ARR
+	       || flag == FSEG_PAGE_FROM_FRAG_FREE_LIST || flag == FSEG_PAGE_FROM_LAST_EXTENT);
+
+	if (rel_offset != NULL){
+
+		ut_ad(rel_offset);
+		if (flag == FSEG_PAGE_FROM_FRAG_ARR) {
+
+			*rel_offset = slot_no;
+
+		} else if (flag == FSEG_PAGE_FROM_LAST_EXTENT) {
+
+			ut_ad(!(ret_page == FIL_NULL) && ret_page);
+			*rel_offset = 32 +(flst_get_len(seg_inode + FSEG_EXTENT, mtr)
+					    * (ret_page % FSP_EXTENT_SIZE));
+
+		} else if (flag == FSEG_PAGE_FROM_FRAG_FREE_LIST) {
+
+			*rel_offset = mach_read_from_2(buf_block_get_frame(block) +
+						       PAGE_HEADER + PAGE_REL_OFFSET);
+			ut_ad(*rel_offset);
+
+		} else {
+
+			ut_ad(ret_descr);
+			ut_ad(ret_page && !(ret_page == FIL_NULL));
+
+			*rel_offset = xdes_get_rel_offset(ret_descr, space, zip_size, mtr)
+				      + (ret_page % FSP_EXTENT_SIZE);
+		}
+	} else {
+
+		ut_ad(rel_offset == NULL);
+	}
+}
 
 /**********************************************************************//**
 Allocates a single free page from a segment. This function implements
@@ -2584,7 +2669,7 @@ fseg_alloc_free_page_low(
 	fseg_inode_t*	seg_inode, /*!< in/out: segment inode */
 	ulint		hint,	/*!< in: hint of which page would be
 				desirable */
-	ulint*		rel_idx,
+	ulint*		rel_offset,/*!< in/out: relative offset of index page or NULL */
 	mtr_t*		mtr,	/*!< in/out: mini-transaction */
 	mtr_t*		init_mtr)/*!< in/out: mtr or another mini-transaction
 				in which the page should be initialized.
@@ -2651,7 +2736,6 @@ fseg_alloc_free_page_low(
 		if (ulint first_page =
 			(mach_read_from_4(seg_inode + FSEG_FRAG_PAGE_FIRST) !=
 			 FIL_NULL)) {
-
 			if ((first_page == hint) ||
 			    (prev_page_no = mach_read_from_4(hint_page +
 							     FIL_PAGE_PREV) !=
@@ -2660,11 +2744,28 @@ fseg_alloc_free_page_low(
 							     FIL_PAGE_NEXT) !=
 					    FIL_NULL)) {
 				/* hint page is in fragment pages list; remove
-				   hint page from the list and use it */
+				   hint page from the list and use it*/
 
 				fseg_frag_free_page_remove(
 				    seg_inode, block, space, zip_size, mtr);
+
+				fseg_get_alloc_free_page_rel_offset(
+				    rel_offset, FSEG_PAGE_FROM_FRAG_FREE_LIST, block, NULL,
+				    FIL_NULL, FIL_NULL, seg_inode, space, zip_size, mtr);
+
+//				*rel_offset = mach_read_from_2(hint_page +
+//							       PAGE_HEADER + PAGE_REL_OFFSET);
+//				ut_ad(*rel_offset);
+
 			}
+		} else {
+			fseg_get_alloc_free_page_rel_offset(
+			    rel_offset, FSEG_PAGE_FROM_ANY_EXTENT, NULL, ret_descr,
+			    ret_page, FIL_NULL, seg_inode, space, zip_size, mtr);
+
+//			*rel_offset = xdes_get_rel_offset(ret_descr, space,
+//							  zip_size, mtr)
+//				      + (ret_page % FSP_EXTENT_SIZE);
 		}
 
 		fseg_mark_page_used(seg_inode, ret_page, ret_descr,
@@ -2690,6 +2791,14 @@ fseg_alloc_free_page_low(
 			      ret_descr + XDES_FLST_NODE, mtr);
 
 		ret_page = hint;
+
+		fseg_get_alloc_free_page_rel_offset(
+		    rel_offset, FSEG_PAGE_FROM_LAST_EXTENT, NULL, NULL,
+		    ret_page, FIL_NULL, seg_inode, space, zip_size, mtr);
+
+//		*rel_offset = 32 + (flst_get_len(seg_inode + FSEG_EXTENT, mtr)
+//				 * (ret_page % FSP_EXTENT_SIZE));
+
 		goto got_hinted_page;
 		/*-----------------------------------------------------------*/
 	} else if (used < FSEG_FRAG_LIMIT) {
@@ -2708,7 +2817,11 @@ fseg_alloc_free_page_low(
 			    seg_inode, n, buf_block_get_page_no(block),
 			    mtr);
 
-			*rel_idx = n;
+			fseg_get_alloc_free_page_rel_offset(
+			    rel_offset, FSEG_PAGE_FROM_FRAG_ARR, NULL, NULL,
+			    FIL_NULL, n, seg_inode, space, zip_size, mtr);
+
+//			*rel_offset = n;
 		}
 
 		/* fsp_alloc_free_page() invoked fsp_init_file_page()
@@ -2721,13 +2834,22 @@ fseg_alloc_free_page_low(
 		/* 4. We take free page from the segment i.e.
 		 	first page from fragment page's list
 		==============================================*/
+
+		fseg_get_alloc_free_page_rel_offset(
+		    rel_offset, FSEG_PAGE_FROM_FRAG_FREE_LIST, block, NULL,
+		    FIL_NULL, FIL_NULL, seg_inode, space, zip_size, mtr);
+
+//		*rel_offset = mach_read_from_2(buf_block_get_frame(block) +
+//					       PAGE_HEADER + PAGE_REL_OFFSET);
+//		ut_ad(*rel_offset);
+
 		ret_page = buf_block_get_page_no(block);
-		ret_descr =
-		    xdes_get_descriptor(space, zip_size, ret_page, mtr);
+		ret_descr = xdes_get_descriptor(space, zip_size, ret_page, mtr);
 
 		fseg_mark_page_used(seg_inode, ret_page, ret_descr,
 				    next_page_offset, mtr);
 		fsp_init_file_page(block, mtr);
+
 		return (block);
 		/*-----------------------------------------------------------*/
 	}  else if (ulint page_no =
@@ -2746,9 +2868,12 @@ fseg_alloc_free_page_low(
 //			mlog_write_ulint(seg_inode + FSEG_NEXT_FREE, page_no + 1,
 //					 MLOG_4BYTES, mtr);
 
-			*rel_idx =
-			    32 + (flst_get_len(seg_inode + FSEG_EXTENT, mtr) *
-				(ret_page % FSP_EXTENT_SIZE));
+			fseg_get_alloc_free_page_rel_offset(
+			    rel_offset, FSEG_PAGE_FROM_ANY_EXTENT, NULL, ret_descr,
+			    ret_page, FIL_NULL, seg_inode, space, zip_size, mtr);
+
+//			*rel_offset = xdes_get_rel_offset(ret_descr, space, zip_size, mtr)
+//				   + (ret_page % FSP_EXTENT_SIZE);
 		}
 		/*-----------------------------------------------------------*/
 	} else {
@@ -2765,9 +2890,12 @@ fseg_alloc_free_page_low(
 //			mlog_write_ulint(seg_inode + FSEG_NEXT_FREE, ret_page + 1,
 //					 MLOG_4BYTES, mtr);
 
-			*rel_idx =
-			    32 + (flst_get_len(seg_inode + FSEG_EXTENT, mtr) *
-				  (ret_page % FSP_EXTENT_SIZE));
+			fseg_get_alloc_free_page_rel_offset(
+			    rel_offset, FSEG_PAGE_FROM_LAST_EXTENT, NULL, NULL,
+			    ret_page, FIL_NULL, seg_inode, space, zip_size, mtr);
+
+//			*rel_offset = 32 + (flst_get_len(seg_inode + FSEG_EXTENT, mtr)
+//					 * (ret_page % FSP_EXTENT_SIZE));
 		}
 		/*-----------------------------------------------------------*/
 	}
@@ -2972,7 +3100,7 @@ fseg_alloc_free_page_general(
 				with fsp_reserve_free_extents, then there
 				is no need to do the check for this individual
 				page */
-    	ulint*		rel_idx,
+    	ulint*		rel_offset,/*!< in/out: relative offset of index page or NULL */
 	mtr_t*		mtr,	/*!< in/out: mini-transaction */
 	mtr_t*		init_mtr)/*!< in/out: mtr or another mini-transaction
 				in which the page should be initialized.
@@ -3006,9 +3134,9 @@ fseg_alloc_free_page_general(
 //	block = fseg_alloc_free_page_low(space, zip_size,
 //					 inode, hint, direction,
 //					 mtr, init_mtr);
+	block = fseg_alloc_free_page_low(space, zip_size, inode, hint,
+					 rel_offset, mtr, init_mtr);
 
-	block = fseg_alloc_free_page_low(space, zip_size,
-					 inode, hint, rel_idx, mtr, init_mtr);
 	if (!has_done_reservation) {
 		fil_space_release_free_extents(space, n_reserved);
 	}

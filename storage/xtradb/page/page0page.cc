@@ -448,7 +448,6 @@ page_create_low(
 	page_header_set_field(page, NULL, PAGE_DIRECTION, PAGE_NO_DIRECTION);
 	page_header_set_field(page, NULL, PAGE_N_DIRECTION, 0);
 	page_header_set_field(page, NULL, PAGE_N_RECS, 0);
-	page_header_set_field(page, NULL, PAGE_REL_OFFSET, FIL_NULL);
 	page_set_max_trx_id(block, NULL, 0, NULL);
 	memset(heap_top, 0, UNIV_PAGE_SIZE - PAGE_EMPTY_DIR_START
 	       - page_offset(heap_top));

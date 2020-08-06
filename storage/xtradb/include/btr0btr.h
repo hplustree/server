@@ -713,6 +713,7 @@ btr_page_alloc(
 	buf_block_t*	block,		/*!< in: page block */
 	ulint		bytes_offset,	/*!< in: bytes offset of segment header */
 	ulint		hint_page_no,	/*!< in: hint of a good page */
+	ulint* 		rel_offset,		/*!< in/out: relative offset of index page or NULL */
 	mtr_t*		mtr,		/*!< in/out: mini-transaction
 					for the allocation */
 	mtr_t*		init_mtr)	/*!< in/out: mini-transaction

@@ -462,6 +462,11 @@ the extent are free and which contain old tuple version to clean. */
 /** Offset of the descriptor array on a descriptor page */
 #define	XDES_ARR_OFFSET		(FSP_HEADER_OFFSET + FSP_HEADER_SIZE)
 
+/* Flag for rel offset */
+#define FSEG_PAGE_FROM_FRAG_ARR 	1
+#define FSEG_PAGE_FROM_LAST_EXTENT	2
+#define FSEG_PAGE_FROM_FRAG_FREE_LIST	3
+#define	FSEG_PAGE_FROM_ANY_EXTENT	4
 /* @} */
 
 /**********************************************************************//**
@@ -605,8 +610,8 @@ file space fragmentation.
 @return	X-latched block, or NULL if no page could be allocated */
 
 /* direction parameter is not needed now */
-#define fseg_alloc_free_page(seg_header, hint, mtr)		\
-	fseg_alloc_free_page_general(seg_header, hint, FALSE, mtr, mtr)
+#define fseg_alloc_free_page(seg_header, hint, rel_offset, mtr)		\
+	fseg_alloc_free_page_general(seg_header, hint, FALSE, rel_offset, mtr, mtr)
 /**********************************************************************//**
 Allocates a single free page from a segment. This function implements
 the intelligent allocation strategy which tries to minimize file space
@@ -629,7 +634,7 @@ fseg_alloc_free_page_general(
 				with fsp_reserve_free_extents, then there
 				is no need to do the check for this individual
 				page */
-    	ulint*		rel_idx,
+    	ulint*		rel_offset,/*!< in/out: relative offset of index page or NULL */
 	mtr_t*		mtr,	/*!< in/out: mini-transaction */
 	mtr_t*		init_mtr)/*!< in/out: mtr or another mini-transaction
 				in which the page should be initialized.

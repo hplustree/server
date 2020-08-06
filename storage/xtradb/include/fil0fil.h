@@ -59,6 +59,9 @@ extern const char*	fil_path_to_mysql_datadir;
 /** 'null' (undefined) page offset in the context of file spaces */
 #define	FIL_NULL	ULINT32_UNDEFINED
 
+/** 'null' (undefined) rel offset in the context of index pages */
+#define FIL_NULL_16	0xFFFF
+
 /* Space address data type; this is intended to be used when
 addresses accurate to a byte are stored in file pages. If the page part
 of the address is FIL_NULL, the address is considered undefined. */

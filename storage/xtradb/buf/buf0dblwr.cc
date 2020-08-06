@@ -268,13 +268,14 @@ too_small:
 
 	fseg_header = doublewrite + TRX_SYS_DOUBLEWRITE_FSEG;
 	prev_page_no = 0;
+	ulint*	rel_offset=NULL;
 
 	for (i = 0; i < TRX_SYS_DOUBLEWRITE_BLOCKS * TRX_SYS_DOUBLEWRITE_BLOCK_SIZE
 		     + FSP_EXTENT_SIZE / 2; i++) {
-//		new_block = fseg_alloc_free_page(
+//		new_block = fseg_alloc_free_tpage(
 //			fseg_header, prev_page_no + 1, FSP_UP, &mtr);
 		new_block = fseg_alloc_free_page(
-		    fseg_header, prev_page_no + 1, &mtr);
+		    fseg_header, prev_page_no + 1, rel_offset, &mtr);
 		if (new_block == NULL) {
 			ib_logf(IB_LOG_LEVEL_FATAL,
 				"Cannot create doublewrite buffer: you must "

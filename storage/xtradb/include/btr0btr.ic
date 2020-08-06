@@ -192,6 +192,31 @@ btr_page_set_level(
 }
 
 /********************************************************//**
+Sets the relative offset field in an index page. */
+UNIV_INLINE
+void
+btr_page_set_rel_offset(
+/*===============*/
+    page_t*		page,	/*!< in: index page */
+    page_zip_des_t*	page_zip,/*!< in: compressed page whose uncompressed
+				part will be updated, or NULL */
+    ulint		rel_offset,/*!< in: relative offset of the index page or ULINT_UNDEFINED */
+    mtr_t*		mtr)	/*!< in: mini-transaction handle */
+{
+	ut_ad(page && mtr);
+	ut_ad(rel_offset);
+
+	if (page_zip) {
+		mach_write_to_2(page + (PAGE_HEADER + PAGE_REL_OFFSET), rel_offset);
+		page_zip_write_header(page_zip,
+				      page + (PAGE_HEADER + PAGE_REL_OFFSET),
+				      2, mtr);
+	} else {
+		mlog_write_ulint(page + (PAGE_HEADER + PAGE_REL_OFFSET), rel_offset,
+				 MLOG_2BYTES, mtr);
+	}
+}
+/********************************************************//**
 Gets the next index page number.
 @return	next page number */
 UNIV_INLINE

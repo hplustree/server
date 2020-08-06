@@ -2156,8 +2156,9 @@ ibuf_add_free_page(void)
 //	block = fseg_alloc_free_page(
 //		header_page + IBUF_HEADER + IBUF_TREE_SEG_HEADER, 0, FSP_UP,
 //		&mtr);
+	ulint*	rel_offset=NULL;
 	block = fseg_alloc_free_page(
-	    header_page + IBUF_HEADER + IBUF_TREE_SEG_HEADER, 0, &mtr);
+	    header_page + IBUF_HEADER + IBUF_TREE_SEG_HEADER, 0, rel_offset, &mtr);
 
 	if (block == NULL) {
 		mtr_commit(&mtr);
