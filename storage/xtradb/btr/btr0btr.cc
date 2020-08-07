@@ -1433,7 +1433,7 @@ btr_page_free_low(
 	mtr_t*		mtr)	/*!< in: mtr */
 {
 	fseg_header_t*	seg_header;
-	page_t*		root;
+//	page_t*		root;
 
 	ut_ad(mtr_memo_contains(mtr, block, MTR_MEMO_PAGE_X_FIX));
 	/* The page gets invalid for optimistic searches: increment the frame
@@ -1519,15 +1519,16 @@ btr_page_free_low(
 		return;
 	}
 
-	root = btr_root_get(index, mtr);
+//	root = btr_root_get(index, mtr);
+//	if (level == 0) {
+////		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+//		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_OWN;
+//	} else {
+////		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_TOP;
+//		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_PARENT;
+//	}
 
-	if (level == 0) {
-//		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
-		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_OWN;
-	} else {
-//		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_TOP;
-		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_PARENT;
-	}
+
 
 	if (scrub) {
 		/**
@@ -1537,9 +1538,16 @@ btr_page_free_low(
 				 FIL_PAGE_TYPE_ALLOCATED, MLOG_2BYTES, mtr);
 	}
 
+	/* TODO: Here block should not be root page, still need to confirm */
+
+	ut_ad(buf_block_get_page_no(block) != index->page);
+
+	seg_header = buf_block_get_frame(block) + PAGE_HEADER + PAGE_BTR_SEG_PARENT;
+
 	fseg_free_page(seg_header,
 		       buf_block_get_space(block),
 		       buf_block_get_page_no(block), mtr);
+
 
 	/* The page was marked free in the allocation bitmap, but it
 	should remain buffer-fixed until mtr_commit(mtr) or until it
@@ -4242,6 +4250,19 @@ btr_lift_page_up(
 	/* Make the father empty */
 	btr_page_empty(father_block, father_page_zip, index, page_level, mtr);
 	page_level++;
+
+
+	/* Changed file segment header */
+	if (lift_father_up && !dict_index_is_ibuf(index)) {
+
+		btr_copy_seg_hdr(page + PAGE_HEADER + PAGE_BTR_SEG_OWN,
+				 father_page + PAGE_HEADER + PAGE_BTR_SEG_OWN, mtr);
+
+		if (buf_block_get_page_no(father_block) != root_page_no){
+			btr_copy_seg_hdr(page + PAGE_HEADER + PAGE_BTR_SEG_PARENT,
+					 father_page + PAGE_HEADER + PAGE_BTR_SEG_PARENT, mtr);
+		}
+	}
 
 	/* Copy the records to the father page one by one. */
 	if (0
