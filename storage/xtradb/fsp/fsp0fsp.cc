@@ -594,7 +594,10 @@ xdes_get_offset(
 
 /********************************************************************//**
 Returns relative page offset of the first page in extent described by a descriptor.
-@return	relative offset of the first page in extent */
+NOTE: when this function is called, there should be at least one page in extent, which
+is allocated to index, thus has relative offset.
+@return	relative offset of the first page in extent
+ADDED:*/
 UNIV_INLINE
 ulint
 xdes_get_rel_offset(
@@ -2098,7 +2101,8 @@ fseg_get_n_frag_pages(
 /**********************************************************************//**
 Creates a new segment.
 @return the block where the segment header is placed, x-latched, NULL
-if could not create segment because of lack of space */
+if could not create segment because of lack of space
+MODIFIED: set file segment field values as per new structure*/
 UNIV_INTERN
 buf_block_t*
 fseg_create_general(
@@ -2250,7 +2254,8 @@ fseg_create(
 /**********************************************************************//**
 Calculates the number of pages reserved by a segment, and how many pages are
 currently used.
-@return	number of reserved pages */
+@return	number of reserved pages
+MODIFIED: Method to calculate the number of pages reserved and used by segment.*/
 static
 ulint
 fseg_n_reserved_pages_low(
@@ -2390,7 +2395,8 @@ returned still resides in the segment free list, it is not yet taken off it!
 @retval NULL if no page could be allocated
 @retval block, rw_lock_x_lock_count(&block->lock) == 1 if allocation succeeded
 (init_mtr == mtr, or the page was not previously freed in mtr)
-@retval block (not allocated or initialized) otherwise */
+@retval block (not allocated or initialized) otherwise
+MODIFIED: add extent to extent list of segment*/
 static
 xdes_t*
 fseg_alloc_free_extent(
@@ -2454,7 +2460,7 @@ fseg_alloc_free_extent(
 
 /*********************************************************************//**
 Removes a page from fragment free list of file segment.
-*/
+ADDED:*/
 static
 void
 fseg_frag_free_page_remove(
@@ -2517,7 +2523,7 @@ fseg_frag_free_page_remove(
 
 /*********************************************************************//**
 Adds a page as last page in fragment free list of file segment.
-*/
+ADDED:*/
 static
 void
 fseg_frag_free_page_add(
@@ -2570,7 +2576,7 @@ fseg_frag_free_page_add(
 Gets a first page from fragment free pages list of file segment.
 @retval NULL if fragment free pages list is empty
 @retval block
-*/
+ADDED:*/
 static
 buf_block_t*
 fseg_frag_free_page_get_first(
@@ -2599,7 +2605,8 @@ fseg_frag_free_page_get_first(
 
 }
 /**********************************************************************//**
-Get relative offset of page to be allocated from file segment. */
+Get relative offset of page to be allocated from file segment.
+ ADDED:*/
 void
 fseg_get_alloc_free_page_rel_offset(
     ulint*		rel_offset,/*!< in/out: relative offset of index page or NULL */
@@ -2658,7 +2665,9 @@ fragmentation.
 @retval NULL if no page could be allocated
 @retval block, rw_lock_x_lock_count(&block->lock) == 1 if allocation succeeded
 (init_mtr == mtr, or the page was not previously freed in mtr)
-@retval block (not allocated or initialized) otherwise */
+@retval block (not allocated or initialized) otherwise
+MODIFIED: Changes as per new strategy for page allocation. Also find relative offset
+ for allocated page if used for index page.*/
 static
 buf_block_t*
 fseg_alloc_free_page_low(
@@ -3087,7 +3096,8 @@ fragmentation.
 @retval NULL if no page could be allocated
 @retval block, rw_lock_x_lock_count(&block->lock) == 1 if allocation succeeded
 (init_mtr == mtr, or the page was not previously freed in mtr)
-@retval block (not allocated or initialized) otherwise */
+@retval block (not allocated or initialized) otherwise
+MODIFIED: Parameter changes for fseg_alloc_free_page_low function.  */
 UNIV_INTERN
 buf_block_t*
 fseg_alloc_free_page_general(
@@ -3460,7 +3470,8 @@ fsp_get_available_space_in_free_extents(
 
 /********************************************************************//**
 Marks a page used. The page must reside within the extents of the given
-segment. */
+segment.
+MODIFIED: Update newly added fields of file segment structure */
 static MY_ATTRIBUTE((nonnull))
 void
 fseg_mark_page_used(
@@ -3525,7 +3536,8 @@ fseg_mark_page_used(
 }
 
 /**********************************************************************//**
-Frees a single page of a segment. */
+Frees a single page of a segment.
+ MODIFIED: Changes as per new file segment structure*/
 static
 void
 fseg_free_page_low(
@@ -3753,7 +3765,8 @@ fseg_page_is_free(
 }
 
 /**********************************************************************//**
-Frees an extent of a segment to the space free list. */
+Frees an extent of a segment to the space free list.
+ MODIFIED: Changes as per new file segment structure*/
 static
 void
 fseg_free_extent(
@@ -3999,7 +4012,8 @@ fseg_free_step_not_header(
 Returns the first extent descriptor for a segment. We think of the extent
 lists of the segment catenated in the order FSEG_FULL -> FSEG_NOT_FULL
 -> FSEG_FREE.
-@return	the first extent descriptor, or NULL if none */
+@return	the first extent descriptor, or NULL if none
+ MODIFIED: Changes as per new extent list in segment*/
 static
 xdes_t*
 fseg_get_first_extent(
@@ -4049,7 +4063,8 @@ fseg_get_first_extent(
 
 /*******************************************************************//**
 Validates a segment.
-@return	TRUE if ok */
+@return	TRUE if ok
+ MODIFIED: Changes as per new structure*/
 static
 ibool
 fseg_validate_low(
@@ -4214,7 +4229,8 @@ fseg_validate(
 #endif /* UNIV_DEBUG */
 
 /*******************************************************************//**
-Writes info of a segment. */
+Writes info of a segment.
+ MODIFIED: Changes as per new structure*/
 static
 void
 fseg_print_low(
@@ -4296,7 +4312,8 @@ fseg_print(
 
 /*******************************************************************//**
 Validates the file space system and its segments.
-@return	TRUE if ok */
+@return	TRUE if ok
+ MODIFIED: Changes as per new structure*/
 UNIV_INTERN
 ibool
 fsp_validate(

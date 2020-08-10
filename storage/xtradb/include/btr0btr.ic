@@ -192,7 +192,8 @@ btr_page_set_level(
 }
 
 /********************************************************//**
-Sets the relative offset field in an index page. */
+Sets the relative offset field in an index page.
+ ADDED:*/
 UNIV_INLINE
 void
 btr_page_set_rel_offset(

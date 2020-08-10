@@ -1075,7 +1075,8 @@ btr_get_next_user_rec(
 
 /**************************************************************//**
 Creates a new index page (not the root, and also not
-used in page reorganization).  @see btr_page_empty(). */
+used in page reorganization).  @see btr_page_empty().
+MODIFIED: Set relative offset field for the index page.  */
 UNIV_INTERN
 void
 btr_page_create(
@@ -1151,7 +1152,10 @@ that the caller has made the reservation for free extents!
 @retval NULL if no page could be allocated
 @retval block, rw_lock_x_lock_count(&block->lock) == 1 if allocation succeeded
 (init_mtr == mtr, or the page was not previously freed in mtr)
-@retval block (not allocated or initialized) otherwise */
+@retval block (not allocated or initialized) otherwise
+MODIFIED:  Bytes offset of segment header will be passed from caller functions,
+instead of selecting segment header from root. Pass relative offset which is to be
+set in fseg_alloc_free_page_low function. */
 static MY_ATTRIBUTE((nonnull, warn_unused_result))
 buf_block_t*
 btr_page_alloc_low(
@@ -1222,7 +1226,8 @@ that the caller has made the reservation for free extents!
 @retval NULL if no page could be allocated
 @retval block, rw_lock_x_lock_count(&block->lock) == 1 if allocation succeeded
 (init_mtr == mtr, or the page was not previously freed in mtr)
-@retval block (not allocated or initialized) otherwise */
+@retval block (not allocated or initialized) otherwise
+MODIFIED: parameter changes of btr_page_alloc_low function */
 UNIV_INTERN
 buf_block_t*
 btr_page_alloc(
@@ -1285,7 +1290,9 @@ btr_get_size(
 /**************************************************************//**
 Gets the number of reserved and used pages in a B-tree.
 @return	number of pages reserved, or ULINT_UNDEFINED if the index
-is unavailable */
+is unavailable
+MODIFIED: Calculate size of pages by iterating over all internal nodes,
+ as all internal nodes contain file segment.*/
 UNIV_INTERN
 ulint
 btr_get_size_and_reserved(
@@ -1421,7 +1428,8 @@ btr_page_free_for_ibuf(
 /**************************************************************//**
 Frees a file page used in an index tree. Can be used also to (BLOB)
 external storage pages, because the page level 0 can be given as an
-argument. */
+argument.
+ MODIFIED: Changes in segment header selection, but still need to confirm*/
 UNIV_INTERN
 void
 btr_page_free_low(
@@ -1521,10 +1529,10 @@ btr_page_free_low(
 
 //	root = btr_root_get(index, mtr);
 //	if (level == 0) {
-////		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
+//		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
 //		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_OWN;
 //	} else {
-////		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_TOP;
+//		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_TOP;
 //		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_PARENT;
 //	}
 
@@ -1773,7 +1781,9 @@ btr_page_get_father(
 
 /************************************************************//**
 Creates the root node for a new index tree.
-@return	page number of the created root, FIL_NULL if did not succeed */
+@return	page number of the created root, FIL_NULL if did not succeed
+MODIFIED: Allocate root node directly from file space and allocate one
+ file segment. Set relative offset(UNDEFINED) of root node for a index tree.*/
 UNIV_INTERN
 ulint
 btr_create(
@@ -1920,7 +1930,8 @@ btr_create(
 
 /************************************************************//**
 Frees a B-tree except the root page, which MUST be freed after this
-by calling btr_free_root. */
+by calling btr_free_root.
+MODIFIED: Loop over all file segments to frees a b-tree.*/
 UNIV_INTERN
 void
 btr_free_but_not_root(
@@ -2059,7 +2070,8 @@ btr_free_but_not_root(
 }
 
 /************************************************************//**
-Frees the B-tree root page. Other tree MUST already have been freed. */
+Frees the B-tree root page. Other tree MUST already have been freed.
+MODIFIED: directly frees B-tree root page*/
 UNIV_INTERN
 void
 btr_free_root(
@@ -2452,7 +2464,8 @@ btr_page_empty(
 }
 
 /*************************************************************//**
-Copies file segment header from seg_hdr to new_seg_hdr.*/
+Copies file segment header from seg_hdr to new_seg_hdr.
+ADDED: */
 static
 void
 btr_copy_seg_hdr(
@@ -2486,7 +2499,9 @@ the tuple. It is assumed that mtr contains an x-latch on the tree.
 NOTE that the operation of this function must always succeed,
 we cannot reverse it: therefore enough free disk space must be
 guaranteed to be available before this function is called.
-@return	inserted record or NULL if run out of space */
+@return	inserted record or NULL if run out of space
+MODIFIED: btr_page_alloc function in turn find relative offset of index page and
+btr_page_create function set relative offset. Changes for file segments.*/
 UNIV_INTERN
 rec_t*
 btr_root_raise_and_insert(
@@ -3375,7 +3390,8 @@ page but they belongs to old parent's file segment. So this function
 reallocates child pages so that they should belongs to new parent's
 file segment.
 
-@return block or NULL if run out of space */
+@return block or NULL if run out of space
+ADDED*/
 buf_block_t*
 btr_page_reallocation(
     buf_block_t* 	block,	/*!< in/out: buf block of new parent */
@@ -3542,7 +3558,10 @@ this function is called.
 NOTE: jonaso added support for calling function with tuple == NULL
 which cause it to only split a page.
 
-@return inserted record or NULL if run out of space */
+@return inserted record or NULL if run out of space
+MODIFIED: btr_page_alloc function in turn find relative offset of index page and
+btr_page_create function set relative offset. Changes for file segments.
+Reallocation of child pages to thier new parent's file segment if required.*/
 UNIV_INTERN
 rec_t*
 btr_page_split_and_insert(
@@ -4156,7 +4175,8 @@ btr_node_ptr_delete(
 /*************************************************************//**
 If page is the only on its level, this function moves its records to the
 father page, thus reducing the tree height.
-@return father block */
+@return father block
+MODIFIED: Changes for file segment header.*/
 UNIV_INTERN
 buf_block_t*
 btr_lift_page_up(
@@ -5214,7 +5234,8 @@ btr_validate_report2(
 
 /************************************************************//**
 Validates index tree level.
-@return	TRUE if ok */
+@return	TRUE if ok
+MODIFIED: As per new structure*/
 static
 bool
 btr_validate_level(
