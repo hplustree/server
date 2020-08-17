@@ -3393,15 +3393,13 @@ file segment.
 @return block or NULL if run out of space
 ADDED*/
 buf_block_t*
-btr_page_reallocation(
-    buf_block_t* 	block,	/*!< in/out: buf block of new parent */
+btr_child_pages_reallocation(
+    buf_block_t* 	block,/*!< in/out: buf block of new parent node*/
+    rec_t*		limit_rec, /*!< in: record upto/from which child pages needs reallocation */
+    bool 		start,	/*!< in: reallocated pages is on the start or end of record list */
     dict_index_t* 	index,	/*!< in: index tree */
-    mem_heap_t** 	heap,	/*!< in/out: pointer to memory heap, or NULL */
     mtr_t* 		mtr)	/*!< in: mtr */
 {
-	ulint 		space = index->space;
-	ulint		total_recs;
-	ulint *		offsets2 = NULL;
 	buf_block_t *	child_block;
 	buf_block_t *	new_child_block;
 	page_t *	child_page;
@@ -3409,33 +3407,37 @@ btr_page_reallocation(
 	page_zip_des_t* new_page_zip;
 	page_zip_des_t* page_zip;
 	page_t *	page;
-	ulint		rec_traversed;
 	fseg_header_t*  child_seg_hdr;
 	fseg_header_t*  seg_hdr;
 	ulint 		rel_offset;
+	mem_heap_t* 	heap = NULL;
+	ulint* 		offsets = NULL;
+	rec_t* 		rec_node_ptr;
+	bool		condition;
 
 	ut_ad(mtr_memo_contains(mtr, block, MTR_MEMO_PAGE_X_FIX));
 
-	/* Create File Segment for new parent created after split */
+	page = buf_block_get_frame(block);
 
-	block = fseg_create(space, buf_block_get_page_no(block),
-			    PAGE_HEADER + PAGE_BTR_SEG_OWN, mtr);
+	if (start) {
 
-	if (block == NULL) {
-		/* NOTE: Code should never reach here as we already reserved enough
-		 * free space before this funciton call */
-		return(NULL);
+		/* Reallocate child pages (pointed by node pointer record) from
+		starting records of the block upto limit_rec. Not include limit_rec.*/
+
+		rec_node_ptr = page_rec_get_next(page_get_infimum_rec(page));
+		condition = (rec_node_ptr == limit_rec);
+	} else {
+
+		/* Reallocate child pages (pointed by node pointer record) from
+		limit_rec upto end of records in the block. Not include limit-rec.*/
+
+		ut_ad(!page_rec_is_supremum(limit_rec));
+		rec_node_ptr = page_rec_get_next(limit_rec);
+		condition = page_rec_is_supremum(rec_node_ptr);
 	}
 
-	total_recs = page_get_n_recs(buf_block_get_frame(block));
-	ut_ad(total_recs>0);
-
-	rec_traversed = 1;
-	page = buf_block_get_frame(block);
-	rec_t* rec_node_ptr = page_rec_get_next(page_get_infimum_rec(page));
-
 	/* Reallocate pages one by one in loop */
-	while (rec_traversed <= total_recs){
+	while (condition) {
 
 		/* Allocate the new child node */
 		new_child_block = btr_page_alloc(
@@ -3450,10 +3452,10 @@ btr_page_reallocation(
 		}
 
 		/* Get the child node belongs to old parent's segment */
-		offsets2 = rec_get_offsets(rec_node_ptr, index, offsets2,
-					   ULINT_UNDEFINED, heap);
+		offsets = rec_get_offsets(rec_node_ptr, index, offsets,
+					   ULINT_UNDEFINED, &heap);
 
-		child_block = btr_node_ptr_get_child(rec_node_ptr, index, offsets2, mtr);
+		child_block = btr_node_ptr_get_child(rec_node_ptr, index, offsets, mtr);
 
 		/* Create the new child node */
 		child_page = buf_block_get_frame(child_block);
@@ -3521,16 +3523,16 @@ btr_page_reallocation(
 			/* Update the lock table and possible hash index. */
 
 			lock_move_rec_list_end(
-			    new_child_block, block,
+			    new_child_block, child_block,
 			    page_get_infimum_rec(child_page));
 
 			btr_search_move_or_delete_hash_entries(
-			    new_child_block, block, index);
+			    new_child_block, child_block, index);
 
 			/* Delete the records from the source page. */
 
 			page_delete_rec_list_end(
-			    page_get_infimum_rec(child_page), block, index,
+			    page_get_infimum_rec(child_page), child_block, index,
 			    ULINT_UNDEFINED, ULINT_UNDEFINED, mtr);
 		}
 
@@ -3538,10 +3540,19 @@ btr_page_reallocation(
 		btr_page_free(index, child_block, mtr);
 
 		/* Get next node pointer record */
-		rec_traversed++;
 		rec_node_ptr = page_rec_get_next(rec_node_ptr);
 
 		ut_ad(!page_rec_is_supremum(rec_node_ptr));
+
+		/* Replace the address of child page with the address of
+		new child page allocated from new parent's segment */
+
+		btr_node_ptr_set_child_page_no(rec_node_ptr, buf_block_get_page_zip(block),
+					       offsets, buf_block_get_page_no(new_child_block), mtr);
+	}
+
+	if (heap) {
+		mem_heap_free(heap);
 	}
 
 	return (block);
@@ -3885,14 +3896,40 @@ insert_empty:
 
 		if (direction == FSP_DOWN){
 
-			left_block = btr_page_reallocation(left_block, cursor->index, heap, mtr);
+			/* Create File Segment for new parent created after split */
+
+			left_block = fseg_create(cursor->index->space, buf_block_get_page_no(left_block),
+					    PAGE_HEADER + PAGE_BTR_SEG_OWN, mtr);
+
+			if (left_block == NULL) {
+				/* NOTE: Code should never reach here as we already reserved enough
+				 * free space before this funciton call */
+				return(NULL);
+			}
+
+			left_block = btr_child_pages_reallocation(
+			    left_block, page_get_supremum_rec(buf_block_get_frame(left_block)),
+			    TRUE, cursor->index, mtr);
 
 			if (left_block == NULL){
 				return(NULL);
 			}
 
 		} else {
-			right_block = btr_page_reallocation(right_block, cursor->index, heap, mtr);
+			/* Create File Segment for new parent created after split */
+
+			right_block = fseg_create(cursor->index->space, buf_block_get_page_no(right_block),
+						 PAGE_HEADER + PAGE_BTR_SEG_OWN, mtr);
+
+			if (right_block == NULL) {
+				/* NOTE: Code should never reach here as we already reserved enough
+				 * free space before this funciton call */
+				return(NULL);
+			}
+
+			right_block = btr_child_pages_reallocation(
+			    right_block, page_get_supremum_rec(buf_block_get_frame(left_block)),
+			    TRUE, cursor->index, mtr);
 
 			if (right_block == NULL){
 				return(NULL);
@@ -4461,12 +4498,21 @@ btr_compress(
 
 	/* Move records to the merge page */
 	if (is_left) {
+		rec_t*	limit_rec = btr_get_prev_user_rec(page_get_supremum_rec(merge_page), mtr);
 		rec_t*	orig_pred = page_copy_rec_list_start(
 			merge_block, block, page_get_supremum_rec(page),
 			index, mtr);
 
 		if (!orig_pred) {
 			goto err_exit;
+		}
+
+		/* Reallocate child pages to other parent's file segment in the
+		   case when parent node merges. */
+
+		if ((!dict_index_is_ibuf(index)) && (!page_is_leaf(merge_page))) {
+			merge_block = btr_child_pages_reallocation(
+			    merge_block, limit_rec, FALSE, index, mtr);
 		}
 
 		btr_search_drop_page_hash_index(block);
@@ -4508,6 +4554,7 @@ btr_compress(
 			memset(merge_page + FIL_PAGE_PREV, 0xff, 4);
 		}
 
+		rec_t* 	limit_rec = btr_get_next_user_rec(page_get_infimum_rec(merge_page), mtr);
 		orig_succ = page_copy_rec_list_end(merge_block, block,
 						   page_get_infimum_rec(page),
 						   cursor->index, mtr);
@@ -4523,6 +4570,14 @@ btr_compress(
 			}
 #endif /* UNIV_BTR_DEBUG */
 			goto err_exit;
+		}
+
+		/* Reallocate child pages to other parent's file segment in the
+		   case where parent node merges. */
+
+		if ((!dict_index_is_ibuf(index)) && (!page_is_leaf(merge_page))) {
+			merge_block = btr_child_pages_reallocation(
+			    merge_block, limit_rec, TRUE, index, mtr);
 		}
 
 		btr_search_drop_page_hash_index(block);
