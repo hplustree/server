@@ -507,9 +507,16 @@ btr_defragment_merge_pages(
 			btr_node_ptr_delete(index, from_block, mtr);
 			rec = page_rec_get_next(
 				page_get_infimum_rec(from_page));
+
 			node_ptr = dict_index_build_node_ptr(
-				index, rec, page_get_page_no(from_page),
-				heap, level + 1);
+			    index, rec,
+			    mach_read_from_2(from_page + PAGE_HEADER +
+					     PAGE_REL_OFFSET),
+			    heap, level + 1);
+
+//			node_ptr = dict_index_build_node_ptr(
+//				index, rec, page_get_page_no(from_page),
+//				heap, level + 1);
 			btr_insert_on_non_leaf_level(0, index, level+1,
 						     node_ptr, mtr);
 		}

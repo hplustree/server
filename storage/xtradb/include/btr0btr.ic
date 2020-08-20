@@ -217,6 +217,21 @@ btr_page_set_rel_offset(
 				 MLOG_2BYTES, mtr);
 	}
 }
+
+/********************************************************//**
+Gets the relative offset of a index page.
+@return	relative offset
+ADDED : */
+UNIV_INLINE
+ulint
+btr_page_get_rel_offset(
+    	/*==============*/
+    	buf_block_t*	block)	/*!< in: block */
+{
+	page_t* page = buf_block_get_frame(block);
+	ulint rel_offset = mach_read_from_2(page + PAGE_HEADER + PAGE_REL_OFFSET);
+	return rel_offset;
+}
 /********************************************************//**
 Gets the next index page number.
 @return	next page number */
@@ -305,7 +320,8 @@ NOTE: the offsets array must contain all offsets for the record since
 we read the last field according to offsets and assume that it contains
 the child page number. In other words offsets must have been retrieved
 with rec_get_offsets(n_fields=ULINT_UNDEFINED).
-@return	child node address */
+@return	child node address
+MODIFIED : gets relative offset of child page */
 UNIV_INLINE
 ulint
 btr_node_ptr_get_child_page_no( /* get the child node page no in a node pointer record*/
@@ -323,9 +339,11 @@ btr_node_ptr_get_child_page_no( /* get the child node page no in a node pointer 
 	field = rec_get_nth_field(rec, offsets,
 				  rec_offs_n_fields(offsets) - 1, &len);
 
-	ut_ad(len == 4);
+	ut_ad(len == 2);
+	page_no = mach_read_from_2(field);
+//	ut_ad(len == 4);
 
-	page_no = mach_read_from_4(field);
+//	page_no = mach_read_from_4(field);
 
 	if (page_no == 0) {
 		fprintf(stderr,

@@ -1586,7 +1586,8 @@ btr_page_free(
 }
 
 /**************************************************************//**
-Sets the child node file address in a node pointer. */
+Sets the child node file address in a node pointer.
+MODIFIED : sets the relative offset in node pointer. */
 UNIV_INLINE
 void
 btr_node_ptr_set_child_page_no(
@@ -1595,7 +1596,8 @@ btr_node_ptr_set_child_page_no(
 	page_zip_des_t*	page_zip,/*!< in/out: compressed page whose uncompressed
 				part will be updated, or NULL */
 	const ulint*	offsets,/*!< in: array returned by rec_get_offsets() */
-	ulint		page_no,/*!< in: child node address */
+	ulint		page_no,/*!< in: child node address
+				(MODIFIED:relative offset) */
 	mtr_t*		mtr)	/*!< in: mtr */
 {
 	byte*	field;
@@ -1622,21 +1624,28 @@ btr_node_ptr_set_child_page_no(
 
 /************************************************************//**
 Returns the child page of a node pointer and x-latches it.
-@return	child page, x-latched */
+@return	child page, x-latched
+MODIFIED: changes according to relative offset */
 buf_block_t*
 btr_node_ptr_get_child(
 /*===================*/
 	const rec_t*	node_ptr,/*!< in: node pointer */
 	dict_index_t*	index,	/*!< in: index */
 	const ulint*	offsets,/*!< in: array returned by rec_get_offsets() */
+	fseg_header_t*	seg_header, /*!< in: segment header */
+	ulint		zip_size, /*!< in: compressed page size in bytes
+				or 0 for uncompressed pages */
 	mtr_t*		mtr)	/*!< in: mtr */
 {
 	ulint	page_no;
+	ulint rel_offset;
 	ulint	space;
 
 	ut_ad(rec_offs_validate(node_ptr, index, offsets));
 	space = page_get_space_id(page_align(node_ptr));
-	page_no = btr_node_ptr_get_child_page_no(node_ptr, offsets);
+	rel_offset = btr_node_ptr_get_child_page_no(node_ptr, offsets);
+
+	page_no = fseg_get_abs_offset(seg_header, rel_offset, space, zip_size, mtr);
 
 	return(btr_block_get(space, dict_table_zip_size(index->table),
 			     page_no, RW_X_LATCH, index, mtr));
@@ -2666,8 +2675,12 @@ btr_root_raise_and_insert(
 	/* Build the node pointer (= node key and page address) for the
 	child */
 
-	node_ptr = dict_index_build_node_ptr(
-		index, rec, new_page_no, *heap, level);
+	node_ptr =
+	    dict_index_build_node_ptr(index, rec, rel_offset, *heap, level);
+
+//	node_ptr = dict_index_build_node_ptr(
+//		index, rec, new_page_no, *heap, level);
+
 	/* The node pointer must be marked as the predefined minimum record,
 	as there is no lower alphabetical limit to records in the leftmost
 	node of a level: */
@@ -3116,6 +3129,8 @@ btr_attach_half_pages(
 	page_t*		upper_page;
 	ulint		lower_page_no;
 	ulint		upper_page_no;
+	ulint		lower_rel_offset;
+	ulint		upper_rel_offset;
 	page_zip_des_t*	lower_page_zip;
 	page_zip_des_t*	upper_page_zip;
 	dtuple_t*	node_ptr_upper;
@@ -3135,9 +3150,13 @@ btr_attach_half_pages(
 
 		lower_page = buf_block_get_frame(new_block);
 		lower_page_no = buf_block_get_page_no(new_block);
+		lower_rel_offset = mach_read_from_2(lower_page + PAGE_HEADER +
+						    PAGE_REL_OFFSET);
 		lower_page_zip = buf_block_get_page_zip(new_block);
 		upper_page = buf_block_get_frame(block);
 		upper_page_no = buf_block_get_page_no(block);
+		upper_rel_offset = mach_read_from_2(upper_page + PAGE_HEADER +
+						    PAGE_REL_OFFSET);
 		upper_page_zip = buf_block_get_page_zip(block);
 
 		/* Look up the index for the node pointer to page */
@@ -3148,16 +3167,24 @@ btr_attach_half_pages(
 		address of the new lower half */
 
 		btr_node_ptr_set_child_page_no(
-			btr_cur_get_rec(&cursor),
-			btr_cur_get_page_zip(&cursor),
-			offsets, lower_page_no, mtr);
+		    btr_cur_get_rec(&cursor),
+		    btr_cur_get_page_zip(&cursor),
+		    offsets, lower_rel_offset, mtr);
+//		btr_node_ptr_set_child_page_no(
+//			btr_cur_get_rec(&cursor),
+//			btr_cur_get_page_zip(&cursor),
+//			offsets, lower_page_no, mtr);
 		mem_heap_empty(heap);
 	} else {
 		lower_page = buf_block_get_frame(block);
 		lower_page_no = buf_block_get_page_no(block);
+		lower_rel_offset = mach_read_from_2(lower_page + PAGE_HEADER +
+						    PAGE_REL_OFFSET);
 		lower_page_zip = buf_block_get_page_zip(block);
 		upper_page = buf_block_get_frame(new_block);
 		upper_page_no = buf_block_get_page_no(new_block);
+		upper_rel_offset = mach_read_from_2(upper_page + PAGE_HEADER +
+						    PAGE_REL_OFFSET);
 		upper_page_zip = buf_block_get_page_zip(new_block);
 	}
 
@@ -3170,7 +3197,10 @@ btr_attach_half_pages(
 	half */
 
 	node_ptr_upper = dict_index_build_node_ptr(index, split_rec,
-						   upper_page_no, heap, level);
+						   upper_rel_offset, heap, level);
+
+//	node_ptr_upper = dict_index_build_node_ptr(index, split_rec,
+//						   upper_page_no, heap, level);
 
 	/* Insert it next to the pointer to the lower half. Note that this
 	may generate recursion leading to a split on the higher level. */
@@ -3360,8 +3390,12 @@ btr_insert_into_right_sibling(
 	}
 
 	dtuple_t*	node_ptr = dict_index_build_node_ptr(
-		cursor->index, rec, buf_block_get_page_no(next_block),
-		heap, level);
+	    cursor->index, rec, btr_page_get_rel_offset(next_block),
+	    heap, level);
+
+//	dtuple_t*	node_ptr = dict_index_build_node_ptr(
+//		cursor->index, rec, buf_block_get_page_no(next_block),
+//		heap, level);
 
 	btr_insert_on_non_leaf_level(
 		flags, cursor->index, level + 1, node_ptr, mtr);
@@ -3456,7 +3490,10 @@ btr_child_pages_reallocation(
 		offsets = rec_get_offsets(rec_node_ptr, index, offsets,
 					   ULINT_UNDEFINED, &heap);
 
-		child_block = btr_node_ptr_get_child(rec_node_ptr, index, offsets, mtr);
+		seg_hdr = page + PAGE_HEADER + PAGE_BTR_SEG_OWN;
+		child_block = btr_node_ptr_get_child(
+		    rec_node_ptr, index, offsets, seg_hdr,
+		    dict_table_zip_size(index->table), mtr);
 
 		/* Create the new child node */
 		child_page = buf_block_get_frame(child_block);
@@ -3485,7 +3522,6 @@ btr_child_pages_reallocation(
 		}
 
 		/* Set parent segment header for the new child node. */
-		seg_hdr = page + PAGE_HEADER + PAGE_BTR_SEG_OWN;
 
 		btr_copy_seg_hdr(
 		    seg_hdr,
@@ -3552,9 +3588,9 @@ btr_child_pages_reallocation(
 
 		/* Replace the address of child page with the address of
 		new child page allocated from new parent's segment */
-
-		btr_node_ptr_set_child_page_no(rec_node_ptr, buf_block_get_page_zip(block),
-					       offsets, buf_block_get_page_no(new_child_block), mtr);
+		btr_node_ptr_set_child_page_no(
+		    rec_node_ptr, buf_block_get_page_zip(block), offsets,
+		    btr_page_get_rel_offset(new_child_block), mtr);
 
 		/* Get next node pointer record */
 		rec_node_ptr = page_rec_get_next(rec_node_ptr);
@@ -4437,6 +4473,7 @@ btr_compress(
 	btr_cur_t	father_cursor;
 	mem_heap_t*	heap;
 	ulint*		offsets;
+	buf_block_t*	right_block;
 	ulint		nth_rec = 0; /* remove bogus warning */
 	DBUG_ENTER("btr_compress");
 
@@ -4625,10 +4662,13 @@ btr_compress(
 
 		/* Replace the address of the old child node (= page) with the
 		address of the merge page to the right */
+		right_block = btr_block_get(
+		    space, zip_size, right_page_no, RW_NO_LATCH, index, mtr);
+
 		btr_node_ptr_set_child_page_no(
 			btr_cur_get_rec(&father_cursor),
 			btr_cur_get_page_zip(&father_cursor),
-			offsets, right_page_no, mtr);
+			offsets, btr_page_get_rel_offset(right_block), mtr);
 
 		compressed = btr_cur_pessimistic_delete(&err, TRUE, &cursor2,
 							BTR_CREATE_FLAG,
@@ -5345,6 +5385,7 @@ btr_validate_level(
 	fseg_header_t*	seg;
 	ulint*		offsets	= NULL;
 	ulint*		offsets2= NULL;
+	fseg_header_t*	seg_header;
 #ifdef UNIV_ZIP_DEBUG
 	page_zip_des_t*	page_zip;
 #endif /* UNIV_ZIP_DEBUG */
@@ -5401,7 +5442,11 @@ btr_validate_level(
 		node_ptr = page_cur_get_rec(&cursor);
 		offsets = rec_get_offsets(node_ptr, index, offsets,
 					  ULINT_UNDEFINED, &heap);
-		block = btr_node_ptr_get_child(node_ptr, index, offsets, &mtr);
+
+		seg_header = page_cur_get_page(&cursor) + PAGE_HEADER +
+			     PAGE_BTR_SEG_OWN;
+		block = btr_node_ptr_get_child(node_ptr, index, offsets,
+					       seg_header, zip_size, &mtr);
 		page = buf_block_get_frame(block);
 	}
 
