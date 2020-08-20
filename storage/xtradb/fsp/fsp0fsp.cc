@@ -2608,7 +2608,7 @@ fseg_frag_free_page_get_first(
 Get relative offset of page to be allocated from file segment.
  ADDED:*/
 void
-fseg_get_alloc_free_page_rel_offset(
+fseg_page_alloc_get_rel_offset(
     ulint*		rel_offset,/*!< in/out: relative offset of index page or NULL */
     ulint		flag,	/*!< in: flag */
     buf_block_t*	block,	/*!< in: buffer block of the page removed from frag
@@ -2635,8 +2635,9 @@ fseg_get_alloc_free_page_rel_offset(
 		} else if (flag == FSEG_PAGE_FROM_LAST_EXTENT) {
 
 			ut_ad(!(ret_page == FIL_NULL) && ret_page);
-			*rel_offset = 32 +(flst_get_len(seg_inode + FSEG_EXTENT, mtr)
-					    * (ret_page % FSP_EXTENT_SIZE));
+			*rel_offset = FSP_EXTENT_SIZE +
+				      (flst_get_len(seg_inode + FSEG_EXTENT, mtr)
+				       *(ret_page % FSP_EXTENT_SIZE));
 
 		} else if (flag == FSEG_PAGE_FROM_FRAG_FREE_LIST) {
 
@@ -2656,6 +2657,53 @@ fseg_get_alloc_free_page_rel_offset(
 
 		ut_ad(rel_offset == NULL);
 	}
+}
+
+/**********************************************************************//**
+Get absolute offset of index page given relative offset from file segment.
+ ADDED:*/
+ulint
+fseg_get_abs_offset(
+    fseg_header_t*	seg_header, /*!< in: file segment header */
+    ulint		rel_offset, /*!< in: relative offset */
+    ulint		space,	/*!< in: space */
+    ulint		zip_size,/*!< in: compressed page size in bytes
+				or 0 for uncompressed pages */
+    mtr_t*		mtr /*!< in: mini transaction */)
+{
+	fseg_inode_t*	inode;
+	ulint 		abs_page_no;
+	ulint 		extent_pos;
+	xdes_t*		descr;
+
+	inode = fseg_inode_get(seg_header, space, zip_size, mtr);
+
+	if (rel_offset < FSEG_FRAG_ARR_N_SLOTS){
+
+		abs_page_no = fseg_get_nth_frag_page_no(inode, rel_offset, mtr);
+
+		ut_ad (abs_page_no != FIL_NULL);
+
+	} else {
+
+		extent_pos = (rel_offset - FSEG_FRAG_ARR_N_SLOTS) / FSP_EXTENT_SIZE;
+
+		ut_ad (flst_get_len(inode + FSEG_EXTENT, mtr) <= extent_pos);
+
+		descr = xdes_lst_get_descriptor(space, zip_size,
+						flst_get_first(inode + FSEG_EXTENT, mtr), mtr);
+
+		for (ulint i=0;i<extent_pos;i++){
+			fil_addr_t next = flst_get_next_addr(descr + XDES_FLST_NODE, mtr);
+			descr = xdes_lst_get_descriptor(space, zip_size, next, mtr);
+		}
+
+		abs_page_no = xdes_get_offset(descr) +
+		    ((rel_offset - FSEG_FRAG_ARR_N_SLOTS) % FSP_EXTENT_SIZE);
+
+	}
+
+	return abs_page_no;
 }
 
 /**********************************************************************//**
@@ -2758,7 +2806,7 @@ fseg_alloc_free_page_low(
 				fseg_frag_free_page_remove(
 				    seg_inode, block, space, zip_size, mtr);
 
-				fseg_get_alloc_free_page_rel_offset(
+				fseg_page_alloc_get_rel_offset(
 				    rel_offset, FSEG_PAGE_FROM_FRAG_FREE_LIST, block, NULL,
 				    FIL_NULL, FIL_NULL, seg_inode, space, zip_size, mtr);
 
@@ -2768,7 +2816,7 @@ fseg_alloc_free_page_low(
 
 			}
 		} else {
-			fseg_get_alloc_free_page_rel_offset(
+			fseg_page_alloc_get_rel_offset(
 			    rel_offset, FSEG_PAGE_FROM_ANY_EXTENT, NULL, ret_descr,
 			    ret_page, FIL_NULL, seg_inode, space, zip_size, mtr);
 
@@ -2801,7 +2849,7 @@ fseg_alloc_free_page_low(
 
 		ret_page = hint;
 
-		fseg_get_alloc_free_page_rel_offset(
+		fseg_page_alloc_get_rel_offset(
 		    rel_offset, FSEG_PAGE_FROM_LAST_EXTENT, NULL, NULL,
 		    ret_page, FIL_NULL, seg_inode, space, zip_size, mtr);
 
@@ -2826,7 +2874,7 @@ fseg_alloc_free_page_low(
 			    seg_inode, n, buf_block_get_page_no(block),
 			    mtr);
 
-			fseg_get_alloc_free_page_rel_offset(
+			fseg_page_alloc_get_rel_offset(
 			    rel_offset, FSEG_PAGE_FROM_FRAG_ARR, NULL, NULL,
 			    FIL_NULL, n, seg_inode, space, zip_size, mtr);
 
@@ -2844,7 +2892,7 @@ fseg_alloc_free_page_low(
 		 	first page from fragment page's list
 		==============================================*/
 
-		fseg_get_alloc_free_page_rel_offset(
+		fseg_page_alloc_get_rel_offset(
 		    rel_offset, FSEG_PAGE_FROM_FRAG_FREE_LIST, block, NULL,
 		    FIL_NULL, FIL_NULL, seg_inode, space, zip_size, mtr);
 
@@ -2877,7 +2925,7 @@ fseg_alloc_free_page_low(
 //			mlog_write_ulint(seg_inode + FSEG_NEXT_FREE, page_no + 1,
 //					 MLOG_4BYTES, mtr);
 
-			fseg_get_alloc_free_page_rel_offset(
+			fseg_page_alloc_get_rel_offset(
 			    rel_offset, FSEG_PAGE_FROM_ANY_EXTENT, NULL, ret_descr,
 			    ret_page, FIL_NULL, seg_inode, space, zip_size, mtr);
 
@@ -2899,7 +2947,7 @@ fseg_alloc_free_page_low(
 //			mlog_write_ulint(seg_inode + FSEG_NEXT_FREE, ret_page + 1,
 //					 MLOG_4BYTES, mtr);
 
-			fseg_get_alloc_free_page_rel_offset(
+			fseg_page_alloc_get_rel_offset(
 			    rel_offset, FSEG_PAGE_FROM_LAST_EXTENT, NULL, NULL,
 			    ret_page, FIL_NULL, seg_inode, space, zip_size, mtr);
 

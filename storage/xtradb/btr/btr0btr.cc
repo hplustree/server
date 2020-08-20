@@ -3414,6 +3414,7 @@ btr_child_pages_reallocation(
 	ulint* 		offsets = NULL;
 	rec_t* 		rec_node_ptr;
 	bool		condition;
+	buf_block_t*	prev_new_child_block=NULL;
 
 	ut_ad(mtr_memo_contains(mtr, block, MTR_MEMO_PAGE_X_FIX));
 
@@ -3437,7 +3438,7 @@ btr_child_pages_reallocation(
 	}
 
 	/* Reallocate pages one by one in loop */
-	while (condition) {
+	while (!condition) {
 
 		/* Allocate the new child node */
 		new_child_block = btr_page_alloc(
@@ -3491,12 +3492,22 @@ btr_child_pages_reallocation(
 		    new_child_page + PAGE_HEADER + PAGE_BTR_SEG_PARENT, mtr);
 
 
-		/* Set next and prev link */
-		btr_page_set_prev(new_child_page, new_page_zip,
-				  btr_page_get_prev(child_page, mtr), mtr);
+		/* Set next and prev links */
+		if (prev_new_child_block != NULL){
 
-		btr_page_set_next(new_child_page, new_page_zip,
-				  btr_page_get_next(child_page, mtr), mtr);
+			btr_page_set_prev(new_child_page, new_page_zip,
+					  buf_block_get_page_no(prev_new_child_block), mtr);
+
+			btr_page_set_next(buf_block_get_frame(prev_new_child_block), new_page_zip,
+					  buf_block_get_page_no(new_child_block), mtr);
+		} else {
+			/* If child page is the first page that is reallocated,
+			 then only its prev page no is same as old child's prev.*/
+
+			btr_page_set_prev(new_child_page, new_page_zip,
+					  btr_page_get_prev(child_page, mtr), mtr);
+		}
+
 
 		/* Copy user records to new child block */
 		if (0
@@ -3539,17 +3550,31 @@ btr_child_pages_reallocation(
 		/* Free child block */
 		btr_page_free(index, child_block, mtr);
 
-		/* Get next node pointer record */
-		rec_node_ptr = page_rec_get_next(rec_node_ptr);
-
-		ut_ad(!page_rec_is_supremum(rec_node_ptr));
-
 		/* Replace the address of child page with the address of
 		new child page allocated from new parent's segment */
 
 		btr_node_ptr_set_child_page_no(rec_node_ptr, buf_block_get_page_zip(block),
 					       offsets, buf_block_get_page_no(new_child_block), mtr);
+
+		/* Get next node pointer record */
+		rec_node_ptr = page_rec_get_next(rec_node_ptr);
+
+		ut_ad(!page_rec_is_supremum(rec_node_ptr));
+
+		/* Store child as prev_child so that in the next loop we could
+		 update next and prev links on its level */
+		prev_new_child_block = new_child_block;
+
+		/* Update condition for loop */
+		if (start){
+			condition = (rec_node_ptr == limit_rec);
+		} else {
+			condition = page_rec_is_supremum(rec_node_ptr);
+		}
 	}
+
+	btr_page_set_next(new_child_page, new_page_zip,
+			  btr_page_get_next(child_page, mtr), mtr);
 
 	if (heap) {
 		mem_heap_free(heap);
