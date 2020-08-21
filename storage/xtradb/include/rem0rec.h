@@ -64,7 +64,7 @@ The status is stored in the low-order bits. */
 #define	REC_HEAP_NO_SHIFT	3
 
 /* Length of a B-tree node pointer, in bytes */
-#define REC_NODE_PTR_SIZE	4
+#define REC_NODE_PTR_SIZE	2
 
 /** SQL null flag in a 1-byte offset of ROW_FORMAT=REDUNDANT records */
 #define REC_1BYTE_SQL_NULL_MASK	0x80UL

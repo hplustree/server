@@ -347,6 +347,17 @@ btr_page_get_level_low(
 	const page_t*	page)	/*!< in: index page */
 	MY_ATTRIBUTE((nonnull, pure, warn_unused_result));
 #define btr_page_get_level(page, mtr) btr_page_get_level_low(page)
+
+/********************************************************//**
+Gets the relative offset of a index page.
+@return	relative offset
+ADDED : */
+UNIV_INLINE
+ulint
+btr_page_get_rel_offset(
+    /*==============*/
+    buf_block_t*	block);	/*!< in: block */
+
 /********************************************************//**
 Gets the next index page number.
 @return	next page number */

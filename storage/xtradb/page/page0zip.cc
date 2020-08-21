@@ -4048,10 +4048,12 @@ page_zip_write_node_ptr(
 #if defined UNIV_DEBUG || defined UNIV_ZIP_DEBUG
 	ut_a(!memcmp(storage, field, REC_NODE_PTR_SIZE));
 #endif /* UNIV_DEBUG || UNIV_ZIP_DEBUG */
-#if REC_NODE_PTR_SIZE != 4
-# error "REC_NODE_PTR_SIZE != 4"
+//#if REC_NODE_PTR_SIZE != 4
+#if REC_NODE_PTR_SIZE != 2
+# error "REC_NODE_PTR_SIZE != 2"
 #endif
-	mach_write_to_4(field, ptr);
+//	mach_write_to_4(field, ptr);
+	mach_write_to_2(field, ptr);
 	memcpy(storage, field, REC_NODE_PTR_SIZE);
 
 	if (mtr) {

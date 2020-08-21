@@ -3739,8 +3739,12 @@ btr_cur_pessimistic_delete(
 			btr_node_ptr_delete(index, block, mtr);
 
 			dtuple_t*	node_ptr = dict_index_build_node_ptr(
-				index, next_rec, buf_block_get_page_no(block),
-				heap, level);
+			    index, next_rec, btr_page_get_rel_offset(block),
+			    heap, level);
+
+//			dtuple_t*	node_ptr = dict_index_build_node_ptr(
+//				index, next_rec, buf_block_get_page_no(block),
+//				heap, level);
 
 			btr_insert_on_non_leaf_level(
 				flags, index, level + 1, node_ptr, mtr);

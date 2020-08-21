@@ -5445,7 +5445,8 @@ dict_index_check_search_tuple(
 
 /**********************************************************************//**
 Builds a node pointer out of a physical record and a page number.
-@return	own: node pointer */
+@return	own: node pointer
+MODIFIED : Build node pointer from relative offset of a page */
 UNIV_INTERN
 dtuple_t*
 dict_index_build_node_ptr(
@@ -5453,7 +5454,7 @@ dict_index_build_node_ptr(
 	const dict_index_t*	index,	/*!< in: index */
 	const rec_t*		rec,	/*!< in: record for which to build node
 					pointer */
-	ulint			page_no,/*!< in: page number to put in node
+	ulint			page_no,/*!< in: relative page number to put in node
 					pointer */
 	mem_heap_t*		heap,	/*!< in: memory heap where pointer
 					created */
@@ -5494,14 +5495,18 @@ dict_index_build_node_ptr(
 
 	dict_index_copy_types(tuple, index, n_unique);
 
-	buf = static_cast<byte*>(mem_heap_alloc(heap, 4));
+//	buf = static_cast<byte*>(mem_heap_alloc(heap, 4));
+//
+//	mach_write_to_4(buf, page_no);
+	buf = static_cast<byte*>(mem_heap_alloc(heap, 2));
 
-	mach_write_to_4(buf, page_no);
+	mach_write_to_2(buf, page_no);
 
 	field = dtuple_get_nth_field(tuple, n_unique);
-	dfield_set_data(field, buf, 4);
+	dfield_set_data(field, buf, 2);
+//	dfield_set_data(field, buf, 4);
 
-	dtype_set(dfield_get_type(field), DATA_SYS_CHILD, DATA_NOT_NULL, 4);
+	dtype_set(dfield_get_type(field), DATA_SYS_CHILD, DATA_NOT_NULL, 2);
 
 	rec_copy_prefix_to_dtuple(tuple, rec, index, n_unique, heap);
 	dtuple_set_info_bits(tuple, dtuple_get_info_bits(tuple)

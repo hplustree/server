@@ -1308,7 +1308,8 @@ dict_table_check_for_dup_indexes(
 #endif /* UNIV_DEBUG */
 /**********************************************************************//**
 Builds a node pointer out of a physical record and a page number.
-@return	own: node pointer */
+@return	own: node pointer
+MODIFIED : build node pointer from relative offset of a page  */
 UNIV_INTERN
 dtuple_t*
 dict_index_build_node_ptr(
@@ -1316,7 +1317,7 @@ dict_index_build_node_ptr(
 	const dict_index_t*	index,	/*!< in: index */
 	const rec_t*		rec,	/*!< in: record for which to build node
 					pointer */
-	ulint			page_no,/*!< in: page number to put in node
+	ulint			page_no,/*!< in: relative page number to put in node
 					pointer */
 	mem_heap_t*		heap,	/*!< in: memory heap where pointer
 					created */
