@@ -1779,6 +1779,40 @@ btr_page_get_father(
 	mem_heap_free(heap);
 }
 
+/**************************************************************//**
+Gets a buffer page and declares its latching order level.
+ADDED: this is replacing all usages of btr_block_get_func.*/
+UNIV_INLINE
+buf_block_t*
+btr_child_block_get_func(
+/*===============*/
+    ulint		space,		/*!< in: space id */
+    ulint		zip_size,	/*!< in: compressed page size in bytes
+					or 0 for uncompressed pages */
+    ulint		page_no,	/*!< in: page number */
+    ulint 		rel_offset,	/*!< in: relative offset of page */
+    ulint		mode,		/*!< in: latch mode */
+    const char*		file,		/*!< in: file name */
+    ulint		line,		/*!< in: line where called */
+    dict_index_t*	index,		/*!< in: index tree, may be NULL
+					if it is not an insert buffer tree */
+    mtr_t*		mtr)		/*!< in/out: mtr */
+{
+	buf_block_t*	block;
+	dberr_t		err;
+	ulint 		abs_offset;
+	fseg_header_t*	header = 0;
+
+	block = buf_child_page_get_gen(space, zip_size, page_no, rel_offset, mode,
+				 NULL, BUF_GET, file, line, mtr, &err);
+	header = buf_block_get_frame(block);
+	abs_offset = fseg_get_abs_offset(header, rel_offset, space, zip_size, mtr);
+
+	return btr_block_get_func(space, zip_size,
+			   abs_offset, mode,
+			   file, line, index, mtr);
+}
+
 /************************************************************//**
 Creates the root node for a new index tree.
 @return	page number of the created root, FIL_NULL if did not succeed

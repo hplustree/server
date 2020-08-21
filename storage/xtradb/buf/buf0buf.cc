@@ -3701,6 +3701,42 @@ evict_from_pool:
 }
 
 /********************************************************************//**
+This is the general function used to get access to a database page.
+ADDED: this is replacing all usages of buf_page_get_gen.
+@return	pointer to the block or NULL */
+UNIV_INTERN
+buf_block_t*
+buf_child_page_get_gen(
+/*=============*/
+    ulint		space,	/*!< in: space id */
+    ulint		zip_size,/*!< in: compressed page size in bytes
+				or 0 for uncompressed pages */
+    ulint		offset,	/*!< in: page number */
+    ulint 		rel_offset, /*!< in: relative offset */
+    ulint		rw_latch,/*!< in: RW_S_LATCH, RW_X_LATCH, RW_NO_LATCH */
+    buf_block_t*	guess,	/*!< in: guessed block or NULL */
+    ulint		mode,	/*!< in: BUF_GET, BUF_GET_IF_IN_POOL,
+				BUF_PEEK_IF_IN_POOL, BUF_GET_NO_LATCH, or
+				BUF_GET_IF_IN_POOL_OR_WATCH */
+    const char*		file,	/*!< in: file name */
+    ulint		line,	/*!< in: line where called */
+    mtr_t*		mtr,	/*!< in: mini-transaction */
+    dberr_t*        err)	/*!< out: error code */
+{
+	buf_block_t*	block;
+	ulint 		abs_offset;
+	fseg_header_t*	header = 0;
+
+	header = offset + buf_block_get_frame(block);
+	abs_offset = fseg_get_abs_offset(header, rel_offset, space, zip_size, mtr);
+
+	return buf_page_get_gen(space, zip_size,
+			 abs_offset, rw_latch,
+			 guess, mode,
+			 file, line, mtr, err);
+}
+
+/********************************************************************//**
 This is the general function used to get optimistic access to a database
 page.
 @return	TRUE if success */

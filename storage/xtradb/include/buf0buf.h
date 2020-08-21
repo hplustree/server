@@ -432,6 +432,28 @@ buf_page_get_gen(
 	mtr_t*		mtr,	/*!< in: mini-transaction */
 	dberr_t*	err = NULL); /*!< out: error code */
 /********************************************************************//**
+This is the general function used to get access to a database page.
+ADDED: this is replacing all usages of buf_page_get_gen.
+@return	pointer to the block or NULL */
+UNIV_INTERN
+buf_block_t*
+buf_child_page_get_gen(
+/*=============*/
+    ulint		space,	/*!< in: space id */
+    ulint		zip_size,/*!< in: compressed page size in bytes
+				or 0 for uncompressed pages */
+    ulint		offset,	/*!< in: page number */
+    ulint 		rel_offset, /*!< in: relative offset */
+    ulint		rw_latch,/*!< in: RW_S_LATCH, RW_X_LATCH, RW_NO_LATCH */
+    buf_block_t*	guess,	/*!< in: guessed block or NULL */
+    ulint		mode,	/*!< in: BUF_GET, BUF_GET_IF_IN_POOL,
+				BUF_PEEK_IF_IN_POOL, BUF_GET_NO_LATCH or
+				BUF_GET_IF_IN_POOL_OR_WATCH */
+    const char*	file,	/*!< in: file name */
+    ulint		line,	/*!< in: line where called */
+    mtr_t*		mtr,	/*!< in: mini-transaction */
+    dberr_t*	err = NULL); /*!< out: error code */
+/********************************************************************//**
 Initializes a page to the buffer buf_pool. The page is usually not read
 from a file even if it cannot be found in the buffer buf_pool. This is one
 of the functions which perform to a block a state transition NOT_USED =>

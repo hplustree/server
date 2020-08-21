@@ -486,6 +486,18 @@ ulint
 fsp_header_get_tablespace_size(void);
 /*================================*/
 /**********************************************************************//**
+Get absolute offset of index page given relative offset from file segment.
+ ADDED:*/
+ulint
+fseg_get_abs_offset(
+    fseg_header_t*	seg_header, /*!< in: file segment header */
+    ulint		rel_offset, /*!< in: relative offset */
+    ulint		space,	/*!< in: space */
+    ulint		zip_size,/*!< in: compressed page size in bytes
+				or 0 for uncompressed pages */
+    mtr_t*		mtr /*!< in: mini transaction */);
+/*================================*/
+/**********************************************************************//**
 Reads the file space size stored in the header page.
 @return	tablespace size stored in the space header */
 UNIV_INTERN

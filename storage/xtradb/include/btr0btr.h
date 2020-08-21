@@ -265,6 +265,23 @@ btr_block_get_func(
 	dict_index_t*	index,		/*!< in: index tree, may be NULL
 					if it is not an insert buffer tree */
 	mtr_t*		mtr);		/*!< in/out: mini-transaction */
+/**************************************************************//**
+Gets a buffer page and declares its latching order level.
+ADDED: this is replacing all usages of btr_block_get_func.*/
+UNIV_INLINE
+buf_block_t*
+btr_child_block_get_func(
+/*===============*/
+    ulint		space,		/*!< in: space id */
+    ulint		zip_size,	/*!< in: compressed page size in bytes
+					or 0 for uncompressed pages */
+    ulint		page_no,	/*!< in: page number */
+    ulint		mode,		/*!< in: latch mode */
+    const char*	file,		/*!< in: file name */
+    ulint		line,		/*!< in: line where called */
+    dict_index_t*	index,		/*!< in: index tree, may be NULL
+					if it is not an insert buffer tree */
+    mtr_t*		mtr);		/*!< in/out: mini-transaction */
 # ifdef UNIV_SYNC_DEBUG
 /** Gets a buffer page and declares its latching order level.
 @param space	tablespace identifier
