@@ -699,6 +699,18 @@ fsp_get_available_space_in_free_extents(
 //			or 0 for uncompressed pages */
 //    mtr_t*	mtr);	/*!< in/out: mini-transaction */
 /**********************************************************************//**
+Get absolute offset of index page given relative offset from file segment.
+ ADDED:*/
+ulint
+fseg_get_abs_offset(
+    fseg_header_t*	seg_header, /*!< in: file segment header */
+    ulint		rel_offset, /*!< in: relative offset */
+    ulint		space,	/*!< in: space */
+    ulint		zip_size,/*!< in: compressed page size in bytes
+				or 0 for uncompressed pages */
+    mtr_t*		mtr); /*!< in: mini transaction */
+
+/**********************************************************************//**
 Allocates a single free page from a space. The page is marked as used.
 @retval NULL if no page could be allocated
 @retval block, rw_lock_x_lock_count(&block->lock) == 1 if allocation succeeded

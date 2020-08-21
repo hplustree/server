@@ -1618,7 +1618,8 @@ btr_node_ptr_set_child_page_no(
 					rec_offs_data_size(offsets),
 					page_no, mtr);
 	} else {
-		mlog_write_ulint(field, page_no, MLOG_4BYTES, mtr);
+//		mlog_write_ulint(field, page_no, MLOG_4BYTES, mtr);
+		mlog_write_ulint(field, page_no, MLOG_2BYTES, mtr);
 	}
 }
 
