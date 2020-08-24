@@ -3711,7 +3711,6 @@ buf_child_page_get_gen(
     ulint		space,	/*!< in: space id */
     ulint		zip_size,/*!< in: compressed page size in bytes
 				or 0 for uncompressed pages */
-    ulint		offset,	/*!< in: page number */
     ulint 		rel_offset, /*!< in: relative offset */
     ulint		rw_latch,/*!< in: RW_S_LATCH, RW_X_LATCH, RW_NO_LATCH */
     buf_block_t*	guess,	/*!< in: guessed block or NULL */
@@ -3723,11 +3722,10 @@ buf_child_page_get_gen(
     mtr_t*		mtr,	/*!< in: mini-transaction */
     dberr_t*        err)	/*!< out: error code */
 {
-	buf_block_t*	block;
 	ulint 		abs_offset;
 	fseg_header_t*	header = 0;
 
-	header = offset + buf_block_get_frame(block);
+	header = buf_block_get_frame(guess);
 	abs_offset = fseg_get_abs_offset(header, rel_offset, space, zip_size, mtr);
 
 	return buf_page_get_gen(space, zip_size,

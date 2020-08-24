@@ -275,7 +275,7 @@ btr_child_block_get_func(
     ulint		space,		/*!< in: space id */
     ulint		zip_size,	/*!< in: compressed page size in bytes
 					or 0 for uncompressed pages */
-    ulint		page_no,	/*!< in: page number */
+    ulint 		rel_offset,	/*!< in: relative offset of page */
     ulint		mode,		/*!< in: latch mode */
     const char*	file,		/*!< in: file name */
     ulint		line,		/*!< in: line where called */
@@ -292,7 +292,7 @@ btr_child_block_get_func(
 @param mtr	mini-transaction handle
 @return the block descriptor */
 #  define btr_block_get(space,zip_size,page_no,mode,index,mtr)	\
-	btr_block_get_func(space,zip_size,page_no,mode,		\
+	btr_child_block_get_func(space,zip_size,page_no,mode,		\
 			   __FILE__,__LINE__,index,mtr)
 # else /* UNIV_SYNC_DEBUG */
 /** Gets a buffer page and declares its latching order level.
