@@ -328,7 +328,10 @@ buf_frame_copy(
 NOTE! The following macros should be used instead of buf_page_get_gen,
 to improve debugging. Only values RW_S_LATCH and RW_X_LATCH are allowed
 in LA! */
-#define buf_page_get(SP, ZS, OF, LA, MTR)	 buf_child_page_get_gen(\
+#define buf_page_get(SP, ZS, OF, LA, MTR)	 buf_page_get_gen(\
+				SP, ZS, OF, LA, NULL,\
+				BUF_GET, __FILE__, __LINE__, MTR)
+#define buf_child_page_get(SP, ZS, OF, LA, MTR)	 buf_child_page_get_gen(\
 				SP, ZS, OF, LA, NULL,\
 				BUF_GET, __FILE__, __LINE__, MTR)
 /**************************************************************//**

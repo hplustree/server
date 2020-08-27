@@ -1131,7 +1131,7 @@ btr_page_alloc_for_ibuf(
 				   + PAGE_BTR_IBUF_FREE_LIST, mtr);
 	ut_a(node_addr.page != FIL_NULL);
 
-	new_block = buf_page_get(dict_index_get_space(index),
+	new_block = buf_child_page_get(dict_index_get_space(index),
 				 dict_table_zip_size(index->table),
 				 node_addr.page, RW_X_LATCH, mtr);
 	new_page = buf_block_get_frame(new_block);
@@ -1362,7 +1362,7 @@ btr_get_size_and_reserved(
 			next_page_no = btr_page_get_next(page, mtr);
 
 			if(next_page_no != FIL_NULL){
-				block = buf_page_get(index->space, zip_size, next_page_no, RW_NO_LATCH, mtr);
+				block = buf_child_page_get(index->space, zip_size, next_page_no, RW_NO_LATCH, mtr);
 				page = buf_block_get_frame(block);
 
 				goto loop;
@@ -1648,7 +1648,7 @@ btr_node_ptr_get_child(
 
 	page_no = fseg_get_abs_offset(seg_header, rel_offset, space, zip_size, mtr);
 
-	return(btr_block_get(space, dict_table_zip_size(index->table),
+	return(btr_child_block_get(space, dict_table_zip_size(index->table),
 			     page_no, RW_X_LATCH, index, mtr));
 }
 
@@ -4663,7 +4663,7 @@ btr_compress(
 
 		/* Replace the address of the old child node (= page) with the
 		address of the merge page to the right */
-		right_block = btr_block_get(
+		right_block = btr_child_block_get(
 		    space, zip_size, right_page_no, RW_NO_LATCH, index, mtr);
 
 		btr_node_ptr_set_child_page_no(
@@ -4879,7 +4879,7 @@ btr_discard_page(
 					  mtr);
 
 	if (left_page_no != FIL_NULL) {
-		merge_block = btr_block_get(space, zip_size, left_page_no,
+		merge_block = btr_child_block_get(space, zip_size, left_page_no,
 					    RW_X_LATCH, index, mtr);
 		merge_page = buf_block_get_frame(merge_block);
 #ifdef UNIV_BTR_DEBUG
@@ -4887,7 +4887,7 @@ btr_discard_page(
 		     == buf_block_get_page_no(block));
 #endif /* UNIV_BTR_DEBUG */
 	} else if (right_page_no != FIL_NULL) {
-		merge_block = btr_block_get(space, zip_size, right_page_no,
+		merge_block = btr_child_block_get(space, zip_size, right_page_no,
 					    RW_X_LATCH, index, mtr);
 		merge_page = buf_block_get_frame(merge_block);
 #ifdef UNIV_BTR_DEBUG

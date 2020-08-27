@@ -254,7 +254,7 @@ btr_cur_latch_leaves(
 	case BTR_SEARCH_LEAF:
 	case BTR_MODIFY_LEAF:
 		mode = latch_mode == BTR_SEARCH_LEAF ? RW_S_LATCH : RW_X_LATCH;
-		get_block = btr_block_get(
+		get_block = btr_child_block_get(
 			space, zip_size, page_no, mode, cursor->index, mtr);
 
 		SRV_CORRUPT_TABLE_CHECK(get_block, return;);
@@ -875,7 +875,7 @@ retry_page_get:
 
 	if (level != 0) {
 		/* x-latch the page */
-		buf_block_t*	child_block = btr_block_get(
+		buf_block_t*	child_block = btr_child_block_get(
 			space, zip_size, page_no, RW_X_LATCH, index, mtr);
 
 		page = buf_block_get_frame(child_block);
@@ -5118,7 +5118,7 @@ alloc_another:
 				buf_block_t*	prev_block;
 				page_t*		prev_page;
 
-				prev_block = buf_page_get(space_id, zip_size,
+				prev_block = buf_child_page_get(space_id, zip_size,
 							  prev_page_no,
 							  RW_X_LATCH, &mtr);
 				buf_block_dbg_add_level(prev_block,
@@ -5229,7 +5229,7 @@ alloc_another:
 				}
 
 				if (alloc_mtr == &mtr) {
-					rec_block = buf_page_get(
+					rec_block = buf_child_page_get(
 						space_id, zip_size,
 						rec_page_no,
 						RW_X_LATCH, &mtr);
@@ -5317,7 +5317,7 @@ next_zip_page:
 				extern_len -= store_len;
 
 				if (alloc_mtr == &mtr) {
-					rec_block = buf_page_get(
+					rec_block = buf_child_page_get(
 						space_id, zip_size,
 						rec_page_no,
 						RW_X_LATCH, &mtr);
@@ -5589,7 +5589,7 @@ btr_free_externally_stored_field(
 #ifdef UNIV_SYNC_DEBUG
 		rec_block =
 #endif /* UNIV_SYNC_DEBUG */
-		buf_page_get(page_get_space_id(page_align(field_ref)),
+		    buf_child_page_get(page_get_space_id(page_align(field_ref)),
 			     rec_zip_size,
 			     page_get_page_no(page_align(field_ref)),
 			     RW_X_LATCH, &mtr);
@@ -5616,7 +5616,7 @@ btr_free_externally_stored_field(
 			row_log_table_blob_free(index, start_page);
 		}
 
-		ext_block = buf_page_get(space_id, ext_zip_size, page_no,
+		ext_block = buf_child_page_get(space_id, ext_zip_size, page_no,
 					 RW_X_LATCH, &mtr);
 		buf_block_dbg_add_level(ext_block, SYNC_EXTERN_STORAGE);
 		page = buf_block_get_frame(ext_block);
@@ -5792,7 +5792,7 @@ btr_copy_blob_prefix(
 
 		mtr_start(&mtr);
 
-		block = buf_page_get(space_id, 0, page_no, RW_S_LATCH, &mtr);
+		block = buf_child_page_get(space_id, 0, page_no, RW_S_LATCH, &mtr);
 		buf_block_dbg_add_level(block, SYNC_EXTERN_STORAGE);
 		page = buf_block_get_frame(block);
 

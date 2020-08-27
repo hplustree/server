@@ -292,6 +292,9 @@ btr_child_block_get_func(
 @param mtr	mini-transaction handle
 @return the block descriptor */
 #  define btr_block_get(space,zip_size,page_no,mode,index,mtr)	\
+	btr_block_get_func(space,zip_size,page_no,mode,		\
+			   __FILE__,__LINE__,index,mtr)
+#  define btr_child_block_get(space,zip_size,page_no,mode,index,mtr)	\
 	btr_child_block_get_func(space,zip_size,page_no,mode,		\
 			   __FILE__,__LINE__,index,mtr)
 # else /* UNIV_SYNC_DEBUG */
