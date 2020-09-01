@@ -100,12 +100,10 @@ btr_child_block_get_func(
 	dberr_t		err;
 	ulint 		abs_offset;
 	fseg_header_t*	header = 0;
-	page_t*		page;
 
 	block = buf_child_page_get_gen(space, zip_size, rel_offset, mode,
 				       NULL, BUF_GET, file, line, mtr, &err);
-	page = buf_block_get_frame(block);
-	header = page + rel_offset;
+	header = buf_block_get_frame(block) + FSEG_HDR_OFFSET;
 	abs_offset = fseg_get_abs_offset(header, rel_offset, space, zip_size, mtr);
 
 	return btr_block_get_func(space, zip_size,

@@ -3724,10 +3724,8 @@ buf_child_page_get_gen(
 {
 	ulint 		abs_offset;
 	fseg_header_t*	header = 0;
-	page_t*		page;
 
-	page = buf_block_get_frame(guess);
-	header = page + rel_offset;
+	header = buf_block_get_frame(guess) + FSEG_HDR_OFFSET;
 	abs_offset = fseg_get_abs_offset(header, rel_offset, space, zip_size, mtr);
 
 	return buf_page_get_gen(space, zip_size,
