@@ -1638,7 +1638,6 @@ btr_node_ptr_get_child(
 				or 0 for uncompressed pages */
 	mtr_t*		mtr)	/*!< in: mtr */
 {
-	ulint	page_no;
 	ulint rel_offset;
 	ulint	space;
 
