@@ -254,7 +254,7 @@ btr_cur_latch_leaves(
 	case BTR_SEARCH_LEAF:
 	case BTR_MODIFY_LEAF:
 		mode = latch_mode == BTR_SEARCH_LEAF ? RW_S_LATCH : RW_X_LATCH;
-		get_block = btr_child_block_get(
+		get_block = btr_block_get(
 			space, zip_size, page_no, mode, cursor->index, mtr);
 
 		SRV_CORRUPT_TABLE_CHECK(get_block, return;);

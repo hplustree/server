@@ -1646,10 +1646,8 @@ btr_node_ptr_get_child(
 	space = page_get_space_id(page_align(node_ptr));
 	rel_offset = btr_node_ptr_get_child_page_no(node_ptr, offsets);
 
-	page_no = fseg_get_abs_offset(seg_header, rel_offset, space, zip_size, mtr);
-
 	return(btr_child_block_get(space, dict_table_zip_size(index->table),
-			     page_no, RW_X_LATCH, index, mtr));
+			     rel_offset, RW_X_LATCH, index, mtr));
 }
 
 /************************************************************//**
@@ -4663,7 +4661,7 @@ btr_compress(
 
 		/* Replace the address of the old child node (= page) with the
 		address of the merge page to the right */
-		right_block = btr_child_block_get(
+		right_block = btr_block_get(
 		    space, zip_size, right_page_no, RW_NO_LATCH, index, mtr);
 
 		btr_node_ptr_set_child_page_no(
@@ -4879,7 +4877,7 @@ btr_discard_page(
 					  mtr);
 
 	if (left_page_no != FIL_NULL) {
-		merge_block = btr_child_block_get(space, zip_size, left_page_no,
+		merge_block = btr_block_get(space, zip_size, left_page_no,
 					    RW_X_LATCH, index, mtr);
 		merge_page = buf_block_get_frame(merge_block);
 #ifdef UNIV_BTR_DEBUG
@@ -4887,7 +4885,7 @@ btr_discard_page(
 		     == buf_block_get_page_no(block));
 #endif /* UNIV_BTR_DEBUG */
 	} else if (right_page_no != FIL_NULL) {
-		merge_block = btr_child_block_get(space, zip_size, right_page_no,
+		merge_block = btr_block_get(space, zip_size, right_page_no,
 					    RW_X_LATCH, index, mtr);
 		merge_page = buf_block_get_frame(merge_block);
 #ifdef UNIV_BTR_DEBUG
