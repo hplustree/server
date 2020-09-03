@@ -1974,7 +1974,13 @@ btr_free_but_not_root(
 		return;
 	});
 
-	height = btr_height_get(index, &mtr);
+	mtr_s_lock(dict_index_get_lock(index), &mtr);
+
+	height = btr_page_get_level(root, mtr);
+	if (height == 0) {
+		mtr_commit(&mtr);
+		return;
+	}
 
 	for (ulint i = 0; i < height - 1; i++) {
 		btr_cur_open_at_index_side(true, index, BTR_MODIFY_TREE,
@@ -1997,7 +2003,6 @@ btr_free_but_not_root(
 
 		finished = fseg_free_step(
 		    page + PAGE_HEADER + PAGE_BTR_SEG_PARENT, &mtr);
-		mtr_commit(&mtr);
 
 		if (!finished) {
 			goto loop;
@@ -2011,6 +2016,7 @@ btr_free_but_not_root(
 		}
 	}
 
+	mtr_commit(&mtr);
 //	root = btr_page_get(space, zip_size, root_page_no, RW_X_LATCH,
 //			    NULL, &mtr);
 //

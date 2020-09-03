@@ -745,9 +745,9 @@ dict_drop_index_tree(
 
 	ut_ad(len == 8);
 
-	index_id = mtr_read_ulint(ptr, MLOG_8BYTES, mtr);
+	index_id = mach_read_from_8(ptr);
 
-	index = dict_index_get_if_in_cache(index_id);
+	index = dict_index_get_if_in_cache_low(index_id);
 
 	ptr = rec_get_nth_field_old(
 		rec, DICT_FLD__SYS_INDEXES__PAGE_NO, &len);
