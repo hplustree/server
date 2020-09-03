@@ -759,27 +759,27 @@ btr_root_block_get(
 
 	btr_assert_not_corrupted(block, index);
 
-//#ifdef UNIV_BTR_DEBUG
-//	if (!dict_index_is_ibuf(index)) {
-//		const page_t*	root = buf_block_get_frame(block);
-//
-//		if (UNIV_UNLIKELY(srv_pass_corrupt_table != 0)) {
-//			if (!btr_root_fseg_validate(FIL_PAGE_DATA
-//						    + PAGE_BTR_SEG_LEAF
-//						    + root, space))
-//				return(NULL);
+#ifdef UNIV_BTR_DEBUG
+	if (!dict_index_is_ibuf(index)) {
+		const page_t*	root = buf_block_get_frame(block);
+
+		if (UNIV_UNLIKELY(srv_pass_corrupt_table != 0)) {
+			if (!btr_root_fseg_validate(FIL_PAGE_DATA
+						    + PAGE_BTR_SEG_OWN
+						    + root, space))
+				return(NULL);
 //			if (!btr_root_fseg_validate(FIL_PAGE_DATA
 //						    + PAGE_BTR_SEG_TOP
 //						    + root, space))
 //				return(NULL);
-//			return(block);
-//		}
-//		ut_a(btr_root_fseg_validate(FIL_PAGE_DATA + PAGE_BTR_SEG_LEAF
+			return(block);
+		}
+		ut_a(btr_root_fseg_validate(
+		    FIL_PAGE_DATA + PAGE_BTR_SEG_OWN + root, space));
+		//		ut_a(btr_root_fseg_validate(FIL_PAGE_DATA + PAGE_BTR_SEG_TOP
 //					    + root, space));
-//		ut_a(btr_root_fseg_validate(FIL_PAGE_DATA + PAGE_BTR_SEG_TOP
-//					    + root, space));
-//	}
-//#endif /* UNIV_BTR_DEBUG */
+	}
+#endif /* UNIV_BTR_DEBUG */
 
 	return(block);
 }
@@ -1131,7 +1131,7 @@ btr_page_alloc_for_ibuf(
 				   + PAGE_BTR_IBUF_FREE_LIST, mtr);
 	ut_a(node_addr.page != FIL_NULL);
 
-	new_block = buf_child_page_get(dict_index_get_space(index),
+	new_block = buf_page_get(dict_index_get_space(index),
 				 dict_table_zip_size(index->table),
 				 node_addr.page, RW_X_LATCH, mtr);
 	new_page = buf_block_get_frame(new_block);
@@ -1362,7 +1362,9 @@ btr_get_size_and_reserved(
 			next_page_no = btr_page_get_next(page, mtr);
 
 			if(next_page_no != FIL_NULL){
-				block = buf_child_page_get(index->space, zip_size, next_page_no, RW_NO_LATCH, mtr);
+				block = buf_page_get(index->space,
+						     zip_size, next_page_no,
+						     RW_NO_LATCH, mtr);
 				page = buf_block_get_frame(block);
 
 				goto loop;
@@ -1974,6 +1976,11 @@ btr_free_but_not_root(
 		return;
 	});
 
+#ifdef UNIV_BTR_DEBUG
+	ut_a(btr_root_fseg_validate(FIL_PAGE_DATA + PAGE_BTR_SEG_OWN + root,
+				    space));
+#endif /* UNIV_BTR_DEBUG */
+
 	mtr_s_lock(dict_index_get_lock(index), &mtr);
 
 	height = btr_page_get_level(root, mtr);
@@ -1990,13 +1997,6 @@ btr_free_but_not_root(
 		page = buf_block_get_frame(block);
 
 	loop:
-
-#ifdef UNIV_BTR_DEBUG
-		ut_a(btr_root_fseg_validate(
-		    page + FIL_PAGE_DATA + PAGE_BTR_SEG_OWN, space));
-		ut_a(btr_root_fseg_validate(
-		    page + FIL_PAGE_DATA + PAGE_BTR_SEG_PARENT, space));
-#endif /* UNIV_BTR_DEBUG */
 
 		/* NOTE: page hash indexes are dropped when a page is freed inside
 		fsp0fsp. */
@@ -2491,8 +2491,8 @@ btr_copy_seg_hdr(
 	ulint 	space;
 
 	page_offset = mach_read_from_2(seg_hdr + FSEG_HDR_OFFSET);
-	page_no = mach_read_from_2(seg_hdr + FSEG_HDR_PAGE_NO);
-	space = mach_read_from_2(seg_hdr + FSEG_HDR_SPACE);
+	page_no = mach_read_from_4(seg_hdr + FSEG_HDR_PAGE_NO);
+	space = mach_read_from_4(seg_hdr + FSEG_HDR_SPACE);
 
 
 	mlog_write_ulint(new_seg_hdr + FSEG_HDR_OFFSET, page_offset,
@@ -2561,8 +2561,8 @@ btr_root_raise_and_insert(
 
 		ut_a(btr_root_fseg_validate(FIL_PAGE_DATA + PAGE_BTR_SEG_OWN
 					    + root, space));
-		ut_a(btr_root_fseg_validate(FIL_PAGE_DATA + PAGE_BTR_SEG_PARENT
-					    + root, space));
+//		ut_a(btr_root_fseg_validate(FIL_PAGE_DATA + PAGE_BTR_SEG_PARENT
+//					    + root, space));
 	}
 
 	ut_a(dict_index_get_page(index) == page_get_page_no(root));
@@ -2623,17 +2623,18 @@ btr_root_raise_and_insert(
 		 * here child is internal node */
 
 		if (level != 0) {
+			root_block =
+			    fseg_create(dict_index_get_space(index),
+					buf_block_get_page_no(root_block),
+					PAGE_HEADER + PAGE_BTR_SEG_OWN, mtr);
 
-			root_block = fseg_create(
-			    dict_index_get_space(index), buf_block_get_page_no(root_block),
-			    PAGE_HEADER + PAGE_BTR_SEG_OWN, mtr);
+			root_header = buf_block_get_frame(root_block) +
+				      PAGE_HEADER + PAGE_BTR_SEG_OWN;
 
-			root_header = buf_block_get_frame(root_block) + PAGE_HEADER + PAGE_BTR_SEG_OWN;
-
-			new_page_header = new_page + PAGE_HEADER + PAGE_BTR_SEG_PARENT;
+			new_page_header =
+			    new_page + PAGE_HEADER + PAGE_BTR_SEG_PARENT;
 
 			btr_copy_seg_hdr(root_header, new_page_header, mtr);
-
 		}
 	}
 
@@ -4814,16 +4815,16 @@ btr_discard_only_page_on_level(
 	/* block is the root page, which must be empty, except
 	for the node pointer to the (now discarded) block(s). */
 
-//#ifdef UNIV_BTR_DEBUG
-//	if (!dict_index_is_ibuf(index)) {
-//		const page_t*	root	= buf_block_get_frame(block);
-//		const ulint	space	= dict_index_get_space(index);
-//		ut_a(btr_root_fseg_validate(FIL_PAGE_DATA + PAGE_BTR_SEG_LEAF
-//					    + root, space));
+#ifdef UNIV_BTR_DEBUG
+	if (!dict_index_is_ibuf(index)) {
+		const page_t*	root	= buf_block_get_frame(block);
+		const ulint	space	= dict_index_get_space(index);
+		ut_a(btr_root_fseg_validate(FIL_PAGE_DATA + PAGE_BTR_SEG_OWN
+					    + root, space));
 //		ut_a(btr_root_fseg_validate(FIL_PAGE_DATA + PAGE_BTR_SEG_TOP
 //					    + root, space));
-//	}
-//#endif /* UNIV_BTR_DEBUG */
+	}
+#endif /* UNIV_BTR_DEBUG */
 
 	btr_page_empty(block, buf_block_get_page_zip(block), index, 0, mtr);
 	ut_ad(page_is_leaf(buf_block_get_frame(block)));

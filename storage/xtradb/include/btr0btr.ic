@@ -239,7 +239,7 @@ btr_page_set_rel_offset(
     mtr_t*		mtr)	/*!< in: mini-transaction handle */
 {
 	ut_ad(page && mtr);
-	ut_ad(rel_offset);
+//	ut_ad(rel_offset);
 
 	if (page_zip) {
 		mach_write_to_2(page + (PAGE_HEADER + PAGE_REL_OFFSET), rel_offset);

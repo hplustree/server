@@ -3158,7 +3158,7 @@ fseg_alloc_free_page_general(
 				with fsp_reserve_free_extents, then there
 				is no need to do the check for this individual
 				page */
-    	ulint*		rel_offset,/*!< in/out: relative offset of index page or NULL */
+    ulint*		rel_offset,/*!< in/out: relative offset of index page or NULL */
 	mtr_t*		mtr,	/*!< in/out: mini-transaction */
 	mtr_t*		init_mtr)/*!< in/out: mtr or another mini-transaction
 				in which the page should be initialized.
