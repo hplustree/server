@@ -330,10 +330,10 @@ to improve debugging. Only values RW_S_LATCH and RW_X_LATCH are allowed
 in LA! */
 #define buf_page_get(SP, ZS, OF, LA, MTR)	 buf_page_get_gen(\
 				SP, ZS, OF, LA, NULL,\
-				BUF_GET, __FILE__, __LINE__, MTR)
-#define buf_child_page_get(SP, ZS, OF, LA, MTR)	 buf_child_page_get_gen(\
-				SP, ZS, OF, LA, NULL,\
-				BUF_GET, __FILE__, __LINE__, MTR)
+				BUF_GET, __FILE__, __LINE__, MTR)                       \
+/*#define buf_child_page_get(SP, ZS, OF, LA, MTR)	 buf_child_page_get_gen(\
+			SP, ZS, OF, LA, NULL,\
+			BUF_GET, __FILE__, __LINE__, MTR)*/
 /**************************************************************//**
 Use these macros to bufferfix a page with no latching. Remember not to
 read the contents of the page unless you know it is safe. Do not modify

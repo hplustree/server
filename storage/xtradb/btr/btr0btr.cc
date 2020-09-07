@@ -1640,15 +1640,15 @@ btr_node_ptr_get_child(
 				or 0 for uncompressed pages */
 	mtr_t*		mtr)	/*!< in: mtr */
 {
-	ulint rel_offset;
+	ulint 	rel_offset;
 	ulint	space;
 
 	ut_ad(rec_offs_validate(node_ptr, index, offsets));
 	space = page_get_space_id(page_align(node_ptr));
 	rel_offset = btr_node_ptr_get_child_page_no(node_ptr, offsets);
 
-	return(btr_child_block_get(space, dict_table_zip_size(index->table),
-			     rel_offset, RW_X_LATCH, index, mtr));
+	return(btr_child_block_get(space, zip_size, rel_offset, seg_header,
+				    RW_X_LATCH, index, mtr));
 }
 
 /************************************************************//**
@@ -1674,6 +1674,8 @@ btr_page_get_father_node_ptr_func(
 	ulint		level;
 	ulint		page_no;
 	dict_index_t*	index;
+	ulint 		rel_offset;
+	ulint		abs_offset;
 
 	page_no = buf_block_get_page_no(btr_cur_get_block(cursor));
 	index = btr_cur_get_index(cursor);
@@ -1699,7 +1701,12 @@ btr_page_get_father_node_ptr_func(
 	offsets = rec_get_offsets(node_ptr, index, offsets,
 				  ULINT_UNDEFINED, &heap);
 
-	if (btr_node_ptr_get_child_page_no(node_ptr, offsets) != page_no) {
+	rel_offset = btr_node_ptr_get_child_page_no(node_ptr, offsets);
+	abs_offset = btr_get_abs_child_page_no(
+	    btr_cur_get_page(cursor) + PAGE_HEADER + PAGE_BTR_SEG_OWN,
+	    rel_offset, index->space, dict_table_zip_size(index->table), mtr);
+
+	if (abs_offset != page_no) { /*changes required*/
 		rec_t*	print_rec;
 		fputs("InnoDB: Dump of the child page:\n", stderr);
 		buf_page_print(page_align(user_rec), 0);
@@ -1713,7 +1720,7 @@ btr_page_get_father_node_ptr_func(
 		fprintf(stderr, ",\n"
 			"InnoDB: father ptr page no %lu, child page no %lu\n",
 			(ulong)
-			btr_node_ptr_get_child_page_no(node_ptr, offsets),
+			abs_offset, /*changes required*/
 			(ulong) page_no);
 		print_rec = page_rec_get_next(
 			page_get_infimum_rec(page_align(user_rec)));
@@ -5597,9 +5604,13 @@ loop:
 		offsets = btr_page_get_father_node_ptr(offsets, heap,
 						       &node_cur, &mtr);
 
+		ulint rel_offset = btr_node_ptr_get_child_page_no(node_ptr, offsets);
+		ulint abs_offset = btr_get_abs_child_page_no(
+		    father_page + PAGE_HEADER + PAGE_BTR_SEG_OWN, rel_offset,
+		    space, zip_size, &mtr);
+
 		if (node_ptr != btr_cur_get_rec(&node_cur)
-		    || btr_node_ptr_get_child_page_no(node_ptr, offsets)
-				     != buf_block_get_page_no(block)) {
+		    || abs_offset != buf_block_get_page_no(block)) { /*changes required*/
 
 			btr_validate_report1(index, level, block);
 
@@ -5615,8 +5626,7 @@ loop:
 			rec = btr_cur_get_rec(&node_cur);
 			fprintf(stderr, "\n"
 				"InnoDB: node ptr child page n:o %lu\n",
-				(ulong) btr_node_ptr_get_child_page_no(
-					rec, offsets));
+				(ulong) abs_offset); /*changes required*/
 
 			fputs("InnoDB: record on page ", stderr);
 			rec_print_new(stderr, rec, offsets);

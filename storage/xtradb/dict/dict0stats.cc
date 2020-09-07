@@ -1534,6 +1534,7 @@ dict_stats_analyze_index_below_cur(
 	ulint*		offsets_rec;
 	ulint		size;
 	mtr_t		mtr;
+	ulint 		rel_offset;
 
 	index = btr_cur_get_index(cur);
 
@@ -1566,7 +1567,10 @@ dict_stats_analyze_index_below_cur(
 	offsets_rec = rec_get_offsets(rec, index, offsets1,
 				      ULINT_UNDEFINED, &heap);
 
-	page_no = btr_node_ptr_get_child_page_no(rec, offsets_rec);
+	rel_offset = btr_node_ptr_get_child_page_no(rec, offsets_rec);
+	page_no = btr_get_abs_child_page_no(
+	    buf_block_get_frame(btr_cur_get_block(cur)) + PAGE_HEADER + PAGE_BTR_SEG_OWN,
+	    rel_offset, space, zip_size, &mtr); /*changes required*/
 
 	/* assume no external pages by default - in case we quit from this
 	function without analyzing any leaf pages */
@@ -1622,8 +1626,10 @@ dict_stats_analyze_index_below_cur(
 		ut_a(*n_diff == 2);
 
 		/* we have a non-boring record in rec, descend below it */
-
-		page_no = btr_node_ptr_get_child_page_no(rec, offsets_rec);
+		rel_offset = btr_node_ptr_get_child_page_no(rec, offsets_rec);
+		page_no =  btr_get_abs_child_page_no(
+		    buf_block_get_frame(block) + PAGE_HEADER + PAGE_BTR_SEG_OWN,
+		    rel_offset, space, zip_size, &mtr);/*changes required*/
 	}
 
 	/* make sure we got a leaf page as a result from the above loop */

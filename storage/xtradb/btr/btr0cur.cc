@@ -857,7 +857,10 @@ retry_page_get:
 			node_ptr, index, offsets, ULINT_UNDEFINED, &heap);
 
 		/* Go to the child node */
-		page_no = btr_node_ptr_get_child_page_no(node_ptr, offsets);
+		ulint rel_offset = btr_node_ptr_get_child_page_no(node_ptr, offsets);
+		page_no = btr_get_abs_child_page_no(
+		    page_cur_get_page(page_cursor) + PAGE_HEADER + PAGE_BTR_SEG_OWN,
+		    rel_offset, space, zip_size, mtr); /*changes required*/
 
 		if (UNIV_UNLIKELY(height == 0 && dict_index_is_ibuf(index))) {
 			/* We're doing a search on an ibuf tree and we're one
@@ -875,7 +878,7 @@ retry_page_get:
 
 	if (level != 0) {
 		/* x-latch the page */
-		buf_block_t*	child_block = btr_child_block_get(
+		buf_block_t*	child_block = btr_block_get(
 			space, zip_size, page_no, RW_X_LATCH, index, mtr);
 
 		page = buf_block_get_frame(child_block);
@@ -1105,7 +1108,12 @@ btr_cur_open_at_index_side_func(
 		offsets = rec_get_offsets(node_ptr, cursor->index, offsets,
 					  ULINT_UNDEFINED, &heap);
 		/* Go to the child node */
-		page_no = btr_node_ptr_get_child_page_no(node_ptr, offsets);
+		 /*changes required*/
+		ulint rel_offset = btr_node_ptr_get_child_page_no(node_ptr, offsets);
+		page_no = btr_get_abs_child_page_no(page_cur_get_page(page_cursor) + PAGE_HEADER + PAGE_BTR_SEG_PARENT,
+						    rel_offset, space, zip_size, mtr);
+
+
 	}
 
 exit_loop:
@@ -1223,7 +1231,11 @@ btr_cur_open_at_rnd_pos_func(
 		offsets = rec_get_offsets(node_ptr, cursor->index, offsets,
 					  ULINT_UNDEFINED, &heap);
 		/* Go to the child node */
-		page_no = btr_node_ptr_get_child_page_no(node_ptr, offsets);
+		ulint rel_offset = btr_node_ptr_get_child_page_no(node_ptr, offsets);
+
+		page_no = btr_get_abs_child_page_no(
+		    page_cur_get_page(page_cursor) + PAGE_HEADER + PAGE_BTR_SEG_OWN,
+		    rel_offset, space, zip_size, mtr); /*changes required*/
 	}
 
 exit_loop:
@@ -5118,7 +5130,7 @@ alloc_another:
 				buf_block_t*	prev_block;
 				page_t*		prev_page;
 
-				prev_block = buf_child_page_get(space_id, zip_size,
+				prev_block = buf_page_get(space_id, zip_size, /*TODO: might cause error*/
 							  prev_page_no,
 							  RW_X_LATCH, &mtr);
 				buf_block_dbg_add_level(prev_block,
@@ -5229,7 +5241,7 @@ alloc_another:
 				}
 
 				if (alloc_mtr == &mtr) {
-					rec_block = buf_child_page_get(
+					rec_block = buf_page_get( /*TODO: might cause error*/
 						space_id, zip_size,
 						rec_page_no,
 						RW_X_LATCH, &mtr);
@@ -5317,7 +5329,7 @@ next_zip_page:
 				extern_len -= store_len;
 
 				if (alloc_mtr == &mtr) {
-					rec_block = buf_child_page_get(
+					rec_block = buf_page_get( /*TODO: might cause error*/
 						space_id, zip_size,
 						rec_page_no,
 						RW_X_LATCH, &mtr);
@@ -5589,7 +5601,7 @@ btr_free_externally_stored_field(
 #ifdef UNIV_SYNC_DEBUG
 		rec_block =
 #endif /* UNIV_SYNC_DEBUG */
-		    buf_child_page_get(page_get_space_id(page_align(field_ref)),
+		    buf_page_get(page_get_space_id(page_align(field_ref)),/*TODO: might cause error*/
 			     rec_zip_size,
 			     page_get_page_no(page_align(field_ref)),
 			     RW_X_LATCH, &mtr);
@@ -5616,8 +5628,8 @@ btr_free_externally_stored_field(
 			row_log_table_blob_free(index, start_page);
 		}
 
-		ext_block = buf_child_page_get(space_id, ext_zip_size, page_no,
-					 RW_X_LATCH, &mtr);
+		ext_block = buf_page_get(space_id, ext_zip_size, page_no,
+					 RW_X_LATCH, &mtr); /*TODO: might cause error*/
 		buf_block_dbg_add_level(ext_block, SYNC_EXTERN_STORAGE);
 		page = buf_block_get_frame(ext_block);
 
@@ -5792,7 +5804,7 @@ btr_copy_blob_prefix(
 
 		mtr_start(&mtr);
 
-		block = buf_child_page_get(space_id, 0, page_no, RW_S_LATCH, &mtr);
+		block = buf_page_get(space_id, 0, page_no, RW_S_LATCH, &mtr);/*TODO: might cause error*/
 		buf_block_dbg_add_level(block, SYNC_EXTERN_STORAGE);
 		page = buf_block_get_frame(block);
 
