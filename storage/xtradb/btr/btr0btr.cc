@@ -1348,9 +1348,12 @@ btr_get_size_and_reserved(
 		for(ulint level=1; level<=height ; level++){
 
 			dummy = 0;
-			btr_cur_open_at_index_side(true, index, BTR_SEARCH_LEAF,
-						   &cursor, level, mtr);
-			block = page_cur_get_block(btr_cur_get_page_cur(&cursor));
+			btr_cur_open_at_index_side(
+			    true, index,
+			    BTR_SEARCH_LEAF | BTR_ALREADY_S_LATCHED, &cursor,
+			    level, mtr);
+			block =
+			    page_cur_get_block(btr_cur_get_page_cur(&cursor));
 			page = buf_block_get_frame(block);
 
 		loop:
@@ -1704,7 +1707,8 @@ btr_page_get_father_node_ptr_func(
 	rel_offset = btr_node_ptr_get_child_page_no(node_ptr, offsets);
 	abs_offset = btr_get_abs_child_page_no(
 	    btr_cur_get_page(cursor) + PAGE_HEADER + PAGE_BTR_SEG_OWN,
-	    rel_offset, index->space, dict_table_zip_size(index->table), mtr);
+	    node_ptr, rel_offset, index->space,
+	    dict_table_zip_size(index->table), mtr);
 
 	if (abs_offset != page_no) { /*changes required*/
 		rec_t*	print_rec;
@@ -1988,7 +1992,7 @@ btr_free_but_not_root(
 				    space));
 #endif /* UNIV_BTR_DEBUG */
 
-	mtr_s_lock(dict_index_get_lock(index), &mtr);
+//	mtr_s_lock(dict_index_get_lock(index), &mtr);
 
 	height = btr_page_get_level(root, mtr);
 	if (height == 0) {
@@ -5606,8 +5610,8 @@ loop:
 
 		ulint rel_offset = btr_node_ptr_get_child_page_no(node_ptr, offsets);
 		ulint abs_offset = btr_get_abs_child_page_no(
-		    father_page + PAGE_HEADER + PAGE_BTR_SEG_OWN, rel_offset,
-		    space, zip_size, &mtr);
+		    father_page + PAGE_HEADER + PAGE_BTR_SEG_OWN, node_ptr,
+		    rel_offset, space, zip_size, &mtr);
 
 		if (node_ptr != btr_cur_get_rec(&node_cur)
 		    || abs_offset != buf_block_get_page_no(block)) { /*changes required*/

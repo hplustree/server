@@ -380,14 +380,14 @@ btr_node_ptr_get_child_page_no( /* get the child node page no in a node pointer 
 
 //	page_no = mach_read_from_4(field);
 
-	if (page_no == 0) {
-		fprintf(stderr,
-			"InnoDB: a nonsensical page number 0"
-			" in a node ptr record at offset %lu\n",
-			(ulong) page_offset(rec));
-		buf_page_print(page_align(rec), 0);
-		ut_ad(0);
-	}
+//	if (page_no == 0) {
+//		fprintf(stderr,
+//			"InnoDB: a nonsensical page number 0"
+//			" in a node ptr record at offset %lu\n",
+//			(ulong) page_offset(rec));
+//		buf_page_print(page_align(rec), 0);
+//		ut_ad(0);
+//	}
 
 	return(page_no);
 }
@@ -400,12 +400,25 @@ ulint
 btr_get_abs_child_page_no(
 /*===========================*/
     fseg_header_t*	seg_header,
+    const rec_t*	rec,
     ulint 		rel_offset,
     ulint 		space,
     ulint 		zip_size,
     mtr_t*		mtr)
 {
-	return (fseg_get_abs_offset(seg_header, rel_offset, space, zip_size, mtr));
+	ulint page_no;
+	page_no = fseg_get_abs_offset(seg_header, rel_offset, space, zip_size, mtr);
+
+	if (page_no == 0) {
+		fprintf(stderr,
+			"InnoDB: a nonsensical page number 0"
+			" in a node ptr record at offset %lu\n",
+			(ulong) page_offset(rec));
+		buf_page_print(page_align(rec), 0);
+		ut_ad(0);
+	}
+	return page_no;
+
 }
 
 /**************************************************************//**

@@ -857,10 +857,13 @@ retry_page_get:
 			node_ptr, index, offsets, ULINT_UNDEFINED, &heap);
 
 		/* Go to the child node */
-		ulint rel_offset = btr_node_ptr_get_child_page_no(node_ptr, offsets);
+		ulint rel_offset =
+		    btr_node_ptr_get_child_page_no(node_ptr, offsets);
 		page_no = btr_get_abs_child_page_no(
-		    page_cur_get_page(page_cursor) + PAGE_HEADER + PAGE_BTR_SEG_OWN,
-		    rel_offset, space, zip_size, mtr); /*changes required*/
+		    page_cur_get_page(page_cursor) + PAGE_HEADER +
+			PAGE_BTR_SEG_OWN,
+		    node_ptr, rel_offset, space, zip_size,
+		    mtr); /*changes required*/
 
 		if (UNIV_UNLIKELY(height == 0 && dict_index_is_ibuf(index))) {
 			/* We're doing a search on an ibuf tree and we're one
@@ -1109,11 +1112,13 @@ btr_cur_open_at_index_side_func(
 					  ULINT_UNDEFINED, &heap);
 		/* Go to the child node */
 		 /*changes required*/
-		ulint rel_offset = btr_node_ptr_get_child_page_no(node_ptr, offsets);
-		page_no = btr_get_abs_child_page_no(page_cur_get_page(page_cursor) + PAGE_HEADER + PAGE_BTR_SEG_PARENT,
-						    rel_offset, space, zip_size, mtr);
+		ulint rel_offset =
+		    btr_node_ptr_get_child_page_no(node_ptr, offsets);
 
-
+		page_no = btr_get_abs_child_page_no(
+		    page_cur_get_page(page_cursor) + PAGE_HEADER +
+			PAGE_BTR_SEG_OWN,
+		    node_ptr, rel_offset, space, zip_size, mtr);
 	}
 
 exit_loop:
@@ -1234,8 +1239,10 @@ btr_cur_open_at_rnd_pos_func(
 		ulint rel_offset = btr_node_ptr_get_child_page_no(node_ptr, offsets);
 
 		page_no = btr_get_abs_child_page_no(
-		    page_cur_get_page(page_cursor) + PAGE_HEADER + PAGE_BTR_SEG_OWN,
-		    rel_offset, space, zip_size, mtr); /*changes required*/
+		    page_cur_get_page(page_cursor) + PAGE_HEADER +
+			PAGE_BTR_SEG_OWN,
+		    node_ptr, rel_offset, space, zip_size,
+		    mtr); /*changes required*/
 	}
 
 exit_loop:

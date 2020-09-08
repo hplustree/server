@@ -91,8 +91,8 @@ typedef	byte		page_header_t;
 #define PAGE_BTR_SEG_OWN 38	/* file segment header of page's own segment in
 				a B-tree: not defined in the root of an ibuf tree */
 
-#define PAGE_BTR_IBUF_FREE_LIST	PAGE_BTR_SEG_OWN
-#define PAGE_BTR_IBUF_FREE_LIST_NODE PAGE_BTR_SEG_OWN
+#define PAGE_BTR_IBUF_FREE_LIST	36
+#define PAGE_BTR_IBUF_FREE_LIST_NODE 36
 				/* in the place of PAGE_BTR_SEG_LEAF and _TOP
 				there is a free list base node if the page is
 				the root page of an ibuf tree, and at the same

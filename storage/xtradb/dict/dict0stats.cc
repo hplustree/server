@@ -1569,8 +1569,9 @@ dict_stats_analyze_index_below_cur(
 
 	rel_offset = btr_node_ptr_get_child_page_no(rec, offsets_rec);
 	page_no = btr_get_abs_child_page_no(
-	    buf_block_get_frame(btr_cur_get_block(cur)) + PAGE_HEADER + PAGE_BTR_SEG_OWN,
-	    rel_offset, space, zip_size, &mtr); /*changes required*/
+	    buf_block_get_frame(btr_cur_get_block(cur)) + PAGE_HEADER +
+		PAGE_BTR_SEG_OWN,
+	    rec, rel_offset, space, zip_size, &mtr); /*changes required*/
 
 	/* assume no external pages by default - in case we quit from this
 	function without analyzing any leaf pages */
@@ -1627,9 +1628,11 @@ dict_stats_analyze_index_below_cur(
 
 		/* we have a non-boring record in rec, descend below it */
 		rel_offset = btr_node_ptr_get_child_page_no(rec, offsets_rec);
-		page_no =  btr_get_abs_child_page_no(
-		    buf_block_get_frame(block) + PAGE_HEADER + PAGE_BTR_SEG_OWN,
-		    rel_offset, space, zip_size, &mtr);/*changes required*/
+		page_no = btr_get_abs_child_page_no(
+		    buf_block_get_frame(block) + PAGE_HEADER +
+			PAGE_BTR_SEG_OWN,
+		    rec, rel_offset, space, zip_size,
+		    &mtr); /*changes required*/
 	}
 
 	/* make sure we got a leaf page as a result from the above loop */
