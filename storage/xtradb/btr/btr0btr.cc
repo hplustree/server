@@ -2108,6 +2108,8 @@ btr_free_root(
 {
 	buf_block_t*	block;
 //	fseg_header_t*	header;
+	prio_rw_lock_t*	latch;
+	ulint		flags;
 
 	block = btr_block_get(space, zip_size, root_page_no, RW_X_LATCH,
 			      NULL, mtr);
@@ -2116,6 +2118,10 @@ btr_free_root(
 		SRV_CORRUPT_TABLE_CHECK(block, return;);
 
 		btr_search_drop_page_hash_index(block);
+
+		latch = fil_space_get_latch(space, &flags);
+
+		mtr_x_lock(latch, mtr);
 
 		fsp_free_page(space, zip_size, root_page_no, mtr);
 
