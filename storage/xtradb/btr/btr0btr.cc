@@ -2000,9 +2000,9 @@ btr_free_but_not_root(
 		return;
 	}
 
-	for (ulint i = 0; i < height - 1; i++) {
+	for (ulint i = 0; i < height; i++) {
 		btr_cur_open_at_index_side(true, index, BTR_MODIFY_TREE,
-					   &cursor, 0, &mtr);
+					   &cursor, 1, &mtr);
 		block = page_cur_get_block(btr_cur_get_page_cur(&cursor));
 
 		page = buf_block_get_frame(block);
@@ -2013,7 +2013,7 @@ btr_free_but_not_root(
 		fsp0fsp. */
 
 		finished = fseg_free_step(
-		    page + PAGE_HEADER + PAGE_BTR_SEG_PARENT, &mtr);
+		    page + PAGE_HEADER + PAGE_BTR_SEG_OWN, &mtr);
 
 		if (!finished) {
 			goto loop;
@@ -2021,8 +2021,8 @@ btr_free_but_not_root(
 
 		next_page = btr_page_get_next(page, &mtr);
 		if (next_page != FIL_NULL) {
-			page = (page_t *) buf_page_get(
-			    space, zip_size, next_page, RW_NO_LATCH, &mtr);
+			page = buf_block_get_frame(buf_page_get(
+			    space, zip_size, next_page, RW_NO_LATCH, &mtr));
 			goto loop;
 		}
 	}

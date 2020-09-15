@@ -761,7 +761,7 @@ dict_drop_index_tree(
 
 		return;
 	}
-
+	index->page = root_page_no;
 	ptr = rec_get_nth_field_old(
 		rec, DICT_FLD__SYS_INDEXES__SPACE, &len);
 
