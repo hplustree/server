@@ -1325,9 +1325,16 @@ btr_get_size_and_reserved(
 		return(ULINT_UNDEFINED);
 	}
 
-	root = btr_root_get(index, mtr);
+//	root = btr_root_get(index, mtr);
+	buf_block_t* root_block = btr_root_block_get(index, RW_X_LATCH, mtr);
 	zip_size = dict_table_zip_size(index->table);
 	*used = 0;
+
+	if (root_block && root_block->page.encrypted == true) {
+		root_block = NULL;
+	}
+
+	root = root_block ? buf_block_get_frame(root_block) : NULL;
 
 	if (root) {
 
@@ -1344,6 +1351,9 @@ btr_get_size_and_reserved(
 
 			return (n);
 		}
+
+		mtr_memo_release(mtr, root_block, MTR_MEMO_PAGE_X_FIX);
+		sync_thread_reset_level(&root_block->lock);
 
 		for(ulint level=1; level<=height ; level++){
 
@@ -1363,6 +1373,11 @@ btr_get_size_and_reserved(
 			*used+=dummy;
 
 			next_page_no = btr_page_get_next(page, mtr);
+
+			if (buf_block_get_page_no(block) == buf_block_get_page_no(root_block)){
+				mtr_memo_release(mtr, block, MTR_MEMO_PAGE_S_FIX);
+				sync_thread_reset_level(&block->lock);
+			}
 
 			if(next_page_no != FIL_NULL){
 				block = buf_page_get(index->space,
