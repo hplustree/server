@@ -1307,7 +1307,7 @@ btr_get_size_and_reserved(
 	page_t*		root;
 	page_t* 	page;
 //	page_t*		next_page;
-	ulint		n=ULINT_UNDEFINED;
+	ulint		n=0;
 	btr_cur_t 	cursor;
 	ulint 		height;
 	ulint		dummy;
