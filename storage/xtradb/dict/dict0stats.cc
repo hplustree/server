@@ -1032,7 +1032,8 @@ saved in the array n_diff[0] .. n_diff[n_uniq - 1]. The total number of
 records on the level is saved in total_recs.
 Also, the index of the last record in each group of equal records is saved
 in n_diff_boundaries[0..n_uniq - 1], records indexing starts from the leftmost
-record on the level and continues cross pages boundaries, counting from 0. */
+record on the level and continues cross pages boundaries, counting from 0.
+MODIFIED : root page will have next and prev offset now */
 static
 void
 dict_stats_analyze_index_level(
@@ -1113,8 +1114,9 @@ dict_stats_analyze_index_level(
 	/* check that we are indeed on the desired level */
 	ut_a(btr_page_get_level(page, mtr) == level);
 
-	/* there should not be any pages on the left */
-	ut_a(btr_page_get_prev(page, mtr) == FIL_NULL);
+	/* there should not be any pages on the left
+	  but now root page will have next and prev offset*/
+//	ut_a(btr_page_get_prev(page, mtr) == FIL_NULL);
 
 	/* check whether the first record on the leftmost page is marked
 	as such, if we are on a non-leaf level */
@@ -1568,6 +1570,7 @@ dict_stats_analyze_index_below_cur(
 				      ULINT_UNDEFINED, &heap);
 
 	rel_offset = btr_node_ptr_get_child_page_no(rec, offsets_rec);
+	mtr_start(&mtr);
 	page_no = btr_get_abs_child_page_no(
 	    buf_block_get_frame(btr_cur_get_block(cur)) + PAGE_HEADER +
 		PAGE_BTR_SEG_OWN,
@@ -1577,7 +1580,7 @@ dict_stats_analyze_index_below_cur(
 	function without analyzing any leaf pages */
 	*n_external_pages = 0;
 
-	mtr_start(&mtr);
+//	mtr_start(&mtr);
 
 	/* descend to the leaf level on the B-tree */
 	for (;;) {

@@ -193,6 +193,7 @@ fseg_alloc_free_page_low(
 	ulint		hint,	/*!< in: hint of which page would be
 				desirable */
 	ulint*		rel_offset,/*!< in/out: relative offset of index page or NULL */
+	ulint*		reserved, /*!<in/out: number of reserved pages */
 	mtr_t*		mtr,	/*!< in/out: mini-transaction */
 	mtr_t*		init_mtr)/*!< in/out: mtr or another mini-transaction
 				in which the page should be initialized.
@@ -2196,8 +2197,9 @@ fseg_create_general(
 
 	if (page == 0) {
 		ulint*	rel_offset=NULL;
+		ulint	reserved;
 		block = fseg_alloc_free_page_low(space, zip_size, inode,
-						 0, rel_offset, mtr, mtr);
+						 0, rel_offset, &reserved, mtr, mtr);
 
 		if (block == NULL) {
 
@@ -2727,6 +2729,7 @@ fseg_alloc_free_page_low(
 	ulint		hint,	/*!< in: hint of which page would be
 				desirable */
 	ulint*		rel_offset,/*!< in/out: relative offset of index page or NULL */
+	ulint*		reserved, /*!<in/out: number of reserved pages */
 	mtr_t*		mtr,	/*!< in/out: mini-transaction */
 	mtr_t*		init_mtr)/*!< in/out: mtr or another mini-transaction
 				in which the page should be initialized.
@@ -2737,7 +2740,7 @@ fseg_alloc_free_page_low(
 	ulint		space_size;
 	ib_id_t		seg_id;
 	ulint		used;
-	ulint		reserved;
+	ulint		n_reserved;
 	xdes_t*		descr;		/*!< extent of the hinted page */
 	ulint		ret_page;	/*!< the allocated page offset, FIL_NULL
 					if could not be allocated */
@@ -2754,8 +2757,9 @@ fseg_alloc_free_page_low(
 	seg_id = mach_read_from_8(seg_inode + FSEG_ID);
 
 	ut_ad(seg_id);
+	*reserved = 0;
 
-	reserved = fseg_n_reserved_pages_low(seg_inode, &used, mtr);
+	n_reserved = fseg_n_reserved_pages_low(seg_inode, &used, mtr);
 
 	space_header = fsp_get_space_header(space, zip_size, mtr);
 
@@ -2831,7 +2835,7 @@ fseg_alloc_free_page_low(
 		return (block);
 		/*-----------------------------------------------------------*/
 	} else if (xdes_get_state(descr, mtr) == XDES_FREE
-		   && reserved - used < reserved / FSEG_FILLFACTOR
+		   && n_reserved - used < n_reserved / FSEG_FILLFACTOR
 		   && used >= FSEG_FRAG_LIMIT) {
 
 		/* 2. We allocate the free extent from space and can take
@@ -2855,7 +2859,7 @@ fseg_alloc_free_page_low(
 
 //		*rel_offset = 32 + (flst_get_len(seg_inode + FSEG_EXTENT, mtr)
 //				 * (ret_page % FSP_EXTENT_SIZE));
-
+		*reserved = FSP_EXTENT_SIZE;
 		goto got_hinted_page;
 		/*-----------------------------------------------------------*/
 	} else if (used < FSEG_FRAG_LIMIT) {
@@ -2879,13 +2883,14 @@ fseg_alloc_free_page_low(
 			    FIL_NULL, n, seg_inode, space, zip_size, mtr);
 
 //			*rel_offset = n;
+			*reserved = 1;
 		}
 
 		/* fsp_alloc_free_page() invoked fsp_init_file_page()
 		already. */
 		return(block);
 		/*-----------------------------------------------------------*/
-	} else if ((reserved - used > 0) &&
+	} else if ((n_reserved - used > 0) &&
 		   (!!(block = fseg_frag_free_page_get_first(
 			   seg_inode, space, zip_size, mtr)))) {
 		/* 4. We take free page from the segment i.e.
@@ -2953,6 +2958,7 @@ fseg_alloc_free_page_low(
 
 //			*rel_offset = 32 + (flst_get_len(seg_inode + FSEG_EXTENT, mtr)
 //					 * (ret_page % FSP_EXTENT_SIZE));
+			*reserved = FSP_EXTENT_SIZE;
 		}
 		/*-----------------------------------------------------------*/
 	}
@@ -3158,7 +3164,8 @@ fseg_alloc_free_page_general(
 				with fsp_reserve_free_extents, then there
 				is no need to do the check for this individual
 				page */
-    ulint*		rel_offset,/*!< in/out: relative offset of index page or NULL */
+    	ulint*		rel_offset,/*!< in/out: relative offset of index page or NULL */
+	ulint*		reserved, /*!<in/out: number of reserved pages */
 	mtr_t*		mtr,	/*!< in/out: mini-transaction */
 	mtr_t*		init_mtr)/*!< in/out: mtr or another mini-transaction
 				in which the page should be initialized.
@@ -3193,7 +3200,7 @@ fseg_alloc_free_page_general(
 //					 inode, hint, direction,
 //					 mtr, init_mtr);
 	block = fseg_alloc_free_page_low(space, zip_size, inode, hint,
-					 rel_offset, mtr, init_mtr);
+					 rel_offset, reserved, mtr, init_mtr);
 
 	if (!has_done_reservation) {
 		fil_space_release_free_extents(space, n_reserved);

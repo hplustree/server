@@ -1175,10 +1175,12 @@ btr_page_alloc_low(
 					not initialize the page. */
 {
 	fseg_header_t*	seg_header;
-//	page_t*		root;
+	page_t*		root;
 	page_t*		page;
+	ulint 		reserved;
+	ulint 		level;
 
-//	root = btr_root_get(index, mtr);
+	root = buf_block_get_frame(btr_root_block_get(index, RW_X_LATCH, mtr));
 
 //	if (level == 0) {
 //		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
@@ -1189,6 +1191,7 @@ btr_page_alloc_low(
 	page = buf_block_get_frame(block);
 
 	seg_header = page + bytes_offset;
+	level = btr_page_get_level(page, mtr);
 
 	/* Parameter TRUE below states that the caller has made the
 	reservation for free extents, and thus we know that a page can
@@ -1199,7 +1202,19 @@ btr_page_alloc_low(
 //		TRUE, mtr, init_mtr);
 	buf_block_t* new_block = fseg_alloc_free_page_general(
 	    seg_header, hint_page_no,
-	    TRUE, rel_offset, mtr, init_mtr);
+	    TRUE, rel_offset, &reserved, mtr, init_mtr);
+
+	/* prev and next links of the root page will be used to store
+	   number of reserved and used pages respectively */
+	mlog_write_ulint(root + FIL_PAGE_PREV,
+			 mach_read_from_4(root + FIL_PAGE_PREV) + reserved,
+			 MLOG_4BYTES, mtr);
+
+	if (level == 0) {
+		mlog_write_ulint(root + FIL_PAGE_NEXT,
+				 mach_read_from_4(root + FIL_PAGE_NEXT) + 1,
+				 MLOG_4BYTES, mtr);
+	}
 
 #ifdef UNIV_DEBUG_SCRUBBING
 	if (block != NULL) {
@@ -1303,17 +1318,9 @@ btr_get_size_and_reserved(
 	mtr_t*		mtr)	/*!< in/out: mini-transaction where index
 				is s-latched */
 {
-	fseg_header_t*	seg_header;
+
 	page_t*		root;
-	page_t* 	page;
-//	page_t*		next_page;
 	ulint		n=0;
-	btr_cur_t 	cursor;
-	ulint 		height;
-	ulint		dummy;
-	buf_block_t*	block;
-	ulint 		next_page_no;
-	ulint		zip_size;
 
 	ut_ad(mtr_memo_contains(mtr, dict_index_get_lock(index),
 				MTR_MEMO_S_LOCK));
@@ -1326,82 +1333,16 @@ btr_get_size_and_reserved(
 	}
 
 //	root = btr_root_get(index, mtr);
-	buf_block_t* root_block = btr_root_block_get(index, RW_X_LATCH, mtr);
-	zip_size = dict_table_zip_size(index->table);
-	*used = 0;
-
-	if (root_block && root_block->page.encrypted == true) {
-		root_block = NULL;
-	}
-
-	root = root_block ? buf_block_get_frame(root_block) : NULL;
-
-	if (root) {
-
-		ut_ad(!dict_index_is_ibuf(index));
-		height = btr_page_get_level(root, mtr);
-
-		if (height == 0) {
-
-			seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_OWN;
-			n = fseg_n_reserved_pages(seg_header, used, mtr);
-
-			ut_ad(*used == 0);
-			ut_ad(n == 0);
-
-			return (n);
-		}
-
-		mtr_memo_release(mtr, root_block, MTR_MEMO_PAGE_X_FIX);
-		sync_thread_reset_level(&root_block->lock);
-
-		for(ulint level=1; level<=height ; level++){
-
-			dummy = 0;
-			btr_cur_open_at_index_side(
-			    true, index,
-			    BTR_SEARCH_LEAF | BTR_ALREADY_S_LATCHED, &cursor,
-			    level, mtr);
-			block =
-			    page_cur_get_block(btr_cur_get_page_cur(&cursor));
-			page = buf_block_get_frame(block);
-
-		loop:
-			seg_header = page + PAGE_HEADER + PAGE_BTR_SEG_OWN;
-			n += fseg_n_reserved_pages(seg_header, &dummy, mtr);
-
-			*used+=dummy;
-
-			next_page_no = btr_page_get_next(page, mtr);
-
-			if (buf_block_get_page_no(block) == buf_block_get_page_no(root_block)){
-				mtr_memo_release(mtr, block, MTR_MEMO_PAGE_S_FIX);
-				sync_thread_reset_level(&block->lock);
-			}
-
-			if(next_page_no != FIL_NULL){
-				block = buf_page_get(index->space,
-						     zip_size, next_page_no,
-						     RW_NO_LATCH, mtr);
-				page = buf_block_get_frame(block);
-
-				goto loop;
-
-			}
-
-			if (flag == BTR_N_LEAF_PAGES){
-				break;
-			}
-
-		}
+	root = buf_block_get_frame(btr_root_block_get(index, RW_X_LATCH, mtr));
+	if (root != NULL) {
+		*used = mach_read_from_4(root + FIL_PAGE_NEXT);
+		n = mach_read_from_4(root + FIL_PAGE_PREV);
 
 		/* Add page count for root node in number pages reserved and used by index
 		* because root page is not allocated from any file segment */
 		if (flag == BTR_TOTAL_SIZE){
 			n+=1;
-			*used+=1;
 		}
-
 	}
 
 	return(n);
@@ -1461,7 +1402,8 @@ btr_page_free_low(
 	mtr_t*		mtr)	/*!< in: mtr */
 {
 	fseg_header_t*	seg_header;
-//	page_t*		root;
+	page_t*		root;
+	page_t*		ret_page;
 
 	ut_ad(mtr_memo_contains(mtr, block, MTR_MEMO_PAGE_X_FIX));
 	/* The page gets invalid for optimistic searches: increment the frame
@@ -1547,7 +1489,7 @@ btr_page_free_low(
 		return;
 	}
 
-//	root = btr_root_get(index, mtr);
+	root = buf_block_get_frame(btr_root_block_get(index, RW_X_LATCH, mtr));
 //	if (level == 0) {
 //		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
 //		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_OWN;
@@ -1555,8 +1497,6 @@ btr_page_free_low(
 //		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_TOP;
 //		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_PARENT;
 //	}
-
-
 
 	if (scrub) {
 		/**
@@ -1570,11 +1510,22 @@ btr_page_free_low(
 
 	ut_ad(buf_block_get_page_no(block) != index->page);
 
-	seg_header = buf_block_get_frame(block) + PAGE_HEADER + PAGE_BTR_SEG_PARENT;
+	ret_page = buf_block_get_frame(block);
+	seg_header = ret_page + PAGE_HEADER + PAGE_BTR_SEG_PARENT;
 
 	fseg_free_page(seg_header,
 		       buf_block_get_space(block),
 		       buf_block_get_page_no(block), mtr);
+
+	if (btr_page_get_level(ret_page, mtr) == 0) {
+		mlog_write_ulint(root + FIL_PAGE_NEXT,
+				 mach_read_from_4(root + FIL_PAGE_NEXT) - 1,
+				 MLOG_4BYTES, mtr);
+	}
+
+	mlog_write_ulint(root + FIL_PAGE_PREV,
+			 mach_read_from_4(root + FIL_PAGE_PREV) - 1,
+			 MLOG_4BYTES, mtr);
 
 
 	/* The page was marked free in the allocation bitmap, but it
@@ -1835,6 +1786,7 @@ btr_create(
 	page_t*		page;
 	page_zip_des_t*	page_zip;
 	ulint*		rel_offset=NULL;
+	ulint		reserved;
 
 	/* Create the two new segments (one, in the case of an ibuf tree) for
 	the index tree; the segment headers are put on the allocated root page
@@ -1867,7 +1819,7 @@ btr_create(
 		block = fseg_alloc_free_page(
 		    buf_block_get_frame(ibuf_hdr_block)
 		    + IBUF_HEADER + IBUF_TREE_SEG_HEADER,
-		    IBUF_TREE_ROOT_PAGE_NO, rel_offset, mtr);
+		    IBUF_TREE_ROOT_PAGE_NO, rel_offset, &reserved, mtr);
 
 		if (block == NULL) {
 			return(FIL_NULL);
