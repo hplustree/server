@@ -929,10 +929,10 @@ trx_undo_add_page(
 //		+ header_page,
 //		undo->top_page_no + 1, FSP_UP, TRUE, mtr, mtr);
 	ulint* rel_offset=NULL;
-	ulint* reserved=0;
+	ulint reserved;
 	new_block = fseg_alloc_free_page_general(
 	    TRX_UNDO_SEG_HDR + TRX_UNDO_FSEG_HEADER
-	    + header_page, undo->top_page_no + 1, TRUE, rel_offset, reserved, mtr, mtr);
+	    + header_page, undo->top_page_no + 1, TRUE, rel_offset, &reserved, mtr, mtr);
 
 	fil_space_release_free_extents(undo->space, n_reserved);
 

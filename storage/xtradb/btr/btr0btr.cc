@@ -1177,10 +1177,13 @@ btr_page_alloc_low(
 	fseg_header_t*	seg_header;
 	page_t*		root;
 	page_t*		page;
+	buf_block_t*	root_block;
+	page_zip_des_t*	page_zip;
 	ulint 		reserved;
 	ulint 		level;
 
-	root = buf_block_get_frame(btr_root_block_get(index, RW_X_LATCH, mtr));
+	root_block = btr_root_block_get(index, RW_X_LATCH, mtr);
+	root = buf_block_get_frame(root_block);
 
 //	if (level == 0) {
 //		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
@@ -1204,16 +1207,16 @@ btr_page_alloc_low(
 	    seg_header, hint_page_no,
 	    TRUE, rel_offset, &reserved, mtr, init_mtr);
 
+	page_zip = buf_block_get_page_zip(root_block);
+
 	/* prev and next links of the root page will be used to store
 	   number of reserved and used pages respectively */
-	mlog_write_ulint(root + FIL_PAGE_PREV,
-			 mach_read_from_4(root + FIL_PAGE_PREV) + reserved,
-			 MLOG_4BYTES, mtr);
+	btr_page_set_prev(root, page_zip,
+			  btr_page_get_prev(root, mtr) + reserved, mtr);
 
 	if (level == 0) {
-		mlog_write_ulint(root + FIL_PAGE_NEXT,
-				 mach_read_from_4(root + FIL_PAGE_NEXT) + 1,
-				 MLOG_4BYTES, mtr);
+		btr_page_set_next(root, page_zip,
+				  btr_page_get_next(root, mtr) + 1, mtr);
 	}
 
 #ifdef UNIV_DEBUG_SCRUBBING
@@ -1306,8 +1309,7 @@ btr_get_size(
 Gets the number of reserved and used pages in a B-tree.
 @return	number of pages reserved, or ULINT_UNDEFINED if the index
 is unavailable
-MODIFIED: Calculate size of pages by iterating over all internal nodes,
- as all internal nodes contain file segment.*/
+MODIFIED: Calculate size of pages from root node's next and prev links.*/
 UNIV_INTERN
 ulint
 btr_get_size_and_reserved(
@@ -1335,13 +1337,14 @@ btr_get_size_and_reserved(
 //	root = btr_root_get(index, mtr);
 	root = buf_block_get_frame(btr_root_block_get(index, RW_X_LATCH, mtr));
 	if (root != NULL) {
-		*used = mach_read_from_4(root + FIL_PAGE_NEXT);
-		n = mach_read_from_4(root + FIL_PAGE_PREV);
+		*used = btr_page_get_next(root, mtr);
+		n = btr_page_get_prev(root, mtr);
 
-		/* Add page count for root node in number pages reserved and used by index
-		* because root page is not allocated from any file segment */
-		if (flag == BTR_TOTAL_SIZE){
-			n+=1;
+		if(btr_page_get_level(root, mtr) == 0) {
+			/* Add page count for root node in number pages
+			   used by index because root page is not allocated
+			   from any file segment */
+			*used=1;
 		}
 	}
 
@@ -1404,6 +1407,8 @@ btr_page_free_low(
 	fseg_header_t*	seg_header;
 	page_t*		root;
 	page_t*		ret_page;
+	page_zip_des_t*	page_zip;
+	buf_block_t*	root_block;
 
 	ut_ad(mtr_memo_contains(mtr, block, MTR_MEMO_PAGE_X_FIX));
 	/* The page gets invalid for optimistic searches: increment the frame
@@ -1489,7 +1494,8 @@ btr_page_free_low(
 		return;
 	}
 
-	root = buf_block_get_frame(btr_root_block_get(index, RW_X_LATCH, mtr));
+	root_block = btr_root_block_get(index, RW_X_LATCH, mtr);
+	root = buf_block_get_frame(root_block);
 //	if (level == 0) {
 //		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
 //		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_OWN;
@@ -1517,15 +1523,15 @@ btr_page_free_low(
 		       buf_block_get_space(block),
 		       buf_block_get_page_no(block), mtr);
 
+	page_zip = buf_block_get_page_zip(root_block);
+
 	if (btr_page_get_level(ret_page, mtr) == 0) {
-		mlog_write_ulint(root + FIL_PAGE_NEXT,
-				 mach_read_from_4(root + FIL_PAGE_NEXT) - 1,
-				 MLOG_4BYTES, mtr);
+		btr_page_set_next(root, page_zip,
+				  btr_page_get_next(root, mtr) - 1, mtr);
 	}
 
-	mlog_write_ulint(root + FIL_PAGE_PREV,
-			 mach_read_from_4(root + FIL_PAGE_PREV) - 1,
-			 MLOG_4BYTES, mtr);
+	btr_page_set_prev(root, page_zip, btr_page_get_prev(root, mtr) - 1,
+			  mtr);
 
 
 	/* The page was marked free in the allocation bitmap, but it
@@ -1894,9 +1900,11 @@ btr_create(
 		/* Set the relative offset of the page */
 		btr_page_set_rel_offset(page, page_zip, FIL_NULL_16, mtr);
 	}
-	/* Set the next node and previous node fields */
+	/* Set the next node and previous node fields
+	   now root node's next = number of used pages in leaf level and
+	   prev link = number of reserved pages in tree */
 	btr_page_set_next(page, page_zip, FIL_NULL, mtr);
-	btr_page_set_prev(page, page_zip, FIL_NULL, mtr);
+	btr_page_set_prev(page, page_zip, 1, mtr);
 
 	/* We reset the free bits for the page to allow creation of several
 	trees in the same mtr, otherwise the latch on a bitmap page would
