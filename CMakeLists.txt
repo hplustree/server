@@ -96,6 +96,9 @@ ELSE()
 ENDIF()
 PROJECT(${MYSQL_PROJECT_NAME})
 
+enable_testing()
+add_subdirectory(hpt-test)
+
 SET(CPACK_PACKAGE_NAME "MariaDB")
 SET(CPACK_PACKAGE_DESCRIPTION_SUMMARY "MariaDB: a very fast and robust SQL database server")
 SET(CPACK_PACKAGE_URL "http://mariadb.org")
