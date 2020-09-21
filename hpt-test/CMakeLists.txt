@@ -1,0 +1,1 @@
+MY_ADD_TESTS(firsttest)
