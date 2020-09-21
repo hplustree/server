@@ -247,8 +247,10 @@ btr_cur_latch_leaves(
 	ulint		left_page_no;
 	ulint		right_page_no;
 	buf_block_t*	get_block;
-
+	ulint 		root_page_no;
 	ut_ad(page && mtr);
+
+	root_page_no = dict_index_get_page(btr_cur_get_index(cursor));
 
 	switch (latch_mode) {
 	case BTR_SEARCH_LEAF:
@@ -272,10 +274,12 @@ btr_cur_latch_leaves(
 		} else {
 			mode = sibling_mode = RW_X_LATCH;
 		}
-		/* Fetch and possibly latch also brothers from left to right */
+		/* Fetch and possibly latch also brothers from left to right
+		   if page is not root*/
 		left_page_no = btr_page_get_prev(page, mtr);
 
-		if (left_page_no != FIL_NULL) {
+		if (left_page_no != FIL_NULL &&
+		    root_page_no != page_get_page_no(page)) {
 			get_block = btr_block_get(
 				space, zip_size, left_page_no,
 				sibling_mode, cursor->index, mtr);
@@ -318,7 +322,8 @@ btr_cur_latch_leaves(
 
 		right_page_no = btr_page_get_next(page, mtr);
 
-		if (right_page_no != FIL_NULL) {
+		if (right_page_no != FIL_NULL &&
+		    root_page_no != page_get_page_no(page)) {
 			get_block = btr_block_get(
 				space, zip_size, right_page_no,
 				sibling_mode, cursor->index, mtr);
@@ -344,10 +349,11 @@ btr_cur_latch_leaves(
 	case BTR_SEARCH_PREV:
 	case BTR_MODIFY_PREV:
 		mode = latch_mode == BTR_SEARCH_PREV ? RW_S_LATCH : RW_X_LATCH;
-		/* latch also left brother */
+		/* latch also left brother if page is not root*/
 		left_page_no = btr_page_get_prev(page, mtr);
 
-		if (left_page_no != FIL_NULL) {
+		if (left_page_no != FIL_NULL &&
+		    root_page_no != page_get_page_no(page)) {
 			get_block = btr_block_get(
 				space, zip_size,
 				left_page_no, mode, cursor->index, mtr);
@@ -3735,9 +3741,10 @@ btr_cur_pessimistic_delete(
 				     page_get_infimum_rec(page)))) {
 
 		rec_t*	next_rec = page_rec_get_next(rec);
+		ulint root_page_no = dict_index_get_page(index);
 
-		if (btr_page_get_prev(page, mtr) == FIL_NULL) {
-
+		if (btr_page_get_prev(page, mtr) == FIL_NULL ||
+		    root_page_no == page_get_page_no(page)) {
 			/* If we delete the leftmost node pointer on a
 			non-leaf level, we must mark the new leftmost node
 			pointer as the predefined minimum record */

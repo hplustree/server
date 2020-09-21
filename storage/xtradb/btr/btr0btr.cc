@@ -1903,7 +1903,7 @@ btr_create(
 	/* Set the next node and previous node fields
 	   now root node's next = number of used pages in leaf level and
 	   prev link = number of reserved pages in tree */
-	btr_page_set_next(page, page_zip, FIL_NULL, mtr);
+	btr_page_set_next(page, page_zip, 0, mtr);
 	btr_page_set_prev(page, page_zip, 1, mtr);
 
 	/* We reset the free bits for the page to allow creation of several
@@ -1995,7 +1995,7 @@ btr_free_but_not_root(
 		}
 
 		next_page = btr_page_get_next(page, &mtr);
-		if (next_page != FIL_NULL) {
+		if (next_page != FIL_NULL && root_page_no != buf_block_get_page_no(block)) {
 			page = buf_block_get_frame(buf_page_get(
 			    space, zip_size, next_page, RW_NO_LATCH, &mtr));
 			goto loop;
@@ -2685,6 +2685,10 @@ btr_root_raise_and_insert(
 			     dtuple_get_info_bits(node_ptr)
 			     | REC_INFO_MIN_REC_FLAG);
 
+	page_t* root_page = buf_block_get_frame(root_block);
+	ulint prev_no = btr_page_get_prev(root_page, mtr);
+	ulint next_no = btr_page_get_next(root_page, mtr);
+
 	/* Rebuild the root page to get free space */
 	btr_page_empty(root_block, root_page_zip, index, level + 1, mtr);
 
@@ -2693,8 +2697,12 @@ btr_root_raise_and_insert(
 	must be FIL_NULL if root_page_zip != NULL, because the
 	REC_INFO_MIN_REC_FLAG (of the first user record) will be
 	set if and only if btr_page_get_prev() == FIL_NULL. */
-	btr_page_set_next(root, root_page_zip, FIL_NULL, mtr);
-	btr_page_set_prev(root, root_page_zip, FIL_NULL, mtr);
+//	btr_page_set_next(root, root_page_zip, FIL_NULL, mtr);
+//	btr_page_set_prev(root, root_page_zip, FIL_NULL, mtr);
+
+	/* now root page's next, prev links will not be null*/
+	btr_page_set_next(root, root_page_zip, next_no, mtr);
+	btr_page_set_prev(root, root_page_zip, prev_no, mtr);
 
 	page_cursor = btr_cur_get_page_cur(cursor);
 
@@ -4900,8 +4908,9 @@ btr_discard_page(
 	ut_a(page_is_comp(merge_page) == page_is_comp(page));
 	btr_search_drop_page_hash_index(block);
 
-	if (left_page_no == FIL_NULL && !page_is_leaf(page)) {
-
+	if ((left_page_no == FIL_NULL ||
+	     dict_index_get_page(index) == page_get_page_no(page)) &&
+	    !page_is_leaf(page)) {
 		/* We have to mark the leftmost node pointer on the right
 		side page as the predefined minimum record */
 		node_ptr = page_rec_get_next(page_get_infimum_rec(merge_page));
