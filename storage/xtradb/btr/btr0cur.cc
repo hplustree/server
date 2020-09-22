@@ -276,15 +276,15 @@ btr_cur_latch_leaves(
 		}
 		/* Fetch and possibly latch also brothers from left to right
 		   if page is not root*/
-		left_page_no = btr_page_get_prev(page, mtr);
+		if (root_page_no != page_get_page_no(page)) {
+			left_page_no = btr_page_get_prev(page, mtr);
 
-		if (left_page_no != FIL_NULL &&
-		    root_page_no != page_get_page_no(page)) {
-			get_block = btr_block_get(
-				space, zip_size, left_page_no,
-				sibling_mode, cursor->index, mtr);
+			if (left_page_no != FIL_NULL) {
+				get_block = btr_block_get(
+				    space, zip_size, left_page_no,
+				    sibling_mode, cursor->index, mtr);
 
-			SRV_CORRUPT_TABLE_CHECK(get_block, return;);
+				SRV_CORRUPT_TABLE_CHECK(get_block, return;);
 
 #ifdef UNIV_BTR_DEBUG
 			ut_a(page_is_comp(get_block->frame)
@@ -297,15 +297,17 @@ btr_cur_latch_leaves(
 			     || btr_page_get_next(get_block->frame, mtr)
 				== page_get_page_no(page));
 #endif /* UNIV_BTR_DEBUG */
-			if (sibling_mode == RW_NO_LATCH) {
+				if (sibling_mode == RW_NO_LATCH) {
 				/* btr_block_get() called with RW_NO_LATCH will
 				fix the read block in the buffer.  This serves
 				no purpose for the fake changes prefetching,
 				thus we unfix the sibling blocks immediately.*/
-				mtr_memo_release(mtr, get_block,
-						 MTR_MEMO_BUF_FIX);
-			} else {
-				get_block->check_index_page_at_flush = TRUE;
+					mtr_memo_release(mtr, get_block,
+							 MTR_MEMO_BUF_FIX);
+				} else {
+					get_block->check_index_page_at_flush =
+					    TRUE;
+				}
 			}
 		}
 
@@ -320,15 +322,15 @@ btr_cur_latch_leaves(
 #endif /* UNIV_BTR_DEBUG */
 		get_block->check_index_page_at_flush = TRUE;
 
-		right_page_no = btr_page_get_next(page, mtr);
+		if (root_page_no != page_get_page_no(page)) {
+			right_page_no = btr_page_get_next(page, mtr);
 
-		if (right_page_no != FIL_NULL &&
-		    root_page_no != page_get_page_no(page)) {
-			get_block = btr_block_get(
-				space, zip_size, right_page_no,
-				sibling_mode, cursor->index, mtr);
+			if (right_page_no != FIL_NULL) {
+				get_block = btr_block_get(
+				    space, zip_size, right_page_no,
+				    sibling_mode, cursor->index, mtr);
 
-			SRV_CORRUPT_TABLE_CHECK(get_block, return;);
+				SRV_CORRUPT_TABLE_CHECK(get_block, return;);
 
 #ifdef UNIV_BTR_DEBUG
 			ut_a(page_is_comp(get_block->frame)
@@ -336,11 +338,13 @@ btr_cur_latch_leaves(
 			ut_a(btr_page_get_prev(get_block->frame, mtr)
 			     == page_get_page_no(page));
 #endif /* UNIV_BTR_DEBUG */
-			if (sibling_mode == RW_NO_LATCH) {
-				mtr_memo_release(mtr, get_block,
-						 MTR_MEMO_BUF_FIX);
-			} else {
-				get_block->check_index_page_at_flush = TRUE;
+				if (sibling_mode == RW_NO_LATCH) {
+					mtr_memo_release(mtr, get_block,
+							 MTR_MEMO_BUF_FIX);
+				} else {
+					get_block->check_index_page_at_flush =
+					    TRUE;
+				}
 			}
 		}
 
@@ -350,16 +354,16 @@ btr_cur_latch_leaves(
 	case BTR_MODIFY_PREV:
 		mode = latch_mode == BTR_SEARCH_PREV ? RW_S_LATCH : RW_X_LATCH;
 		/* latch also left brother if page is not root*/
-		left_page_no = btr_page_get_prev(page, mtr);
+		if (root_page_no != page_get_page_no(page)) {
+			left_page_no = btr_page_get_prev(page, mtr);
 
-		if (left_page_no != FIL_NULL &&
-		    root_page_no != page_get_page_no(page)) {
-			get_block = btr_block_get(
-				space, zip_size,
-				left_page_no, mode, cursor->index, mtr);
-			cursor->left_block = get_block;
+			if (left_page_no != FIL_NULL) {
+				get_block = btr_block_get(space, zip_size,
+							  left_page_no, mode,
+							  cursor->index, mtr);
+				cursor->left_block = get_block;
 
-			SRV_CORRUPT_TABLE_CHECK(get_block, return;);
+				SRV_CORRUPT_TABLE_CHECK(get_block, return;);
 
 #ifdef UNIV_BTR_DEBUG
 			ut_a(page_is_comp(get_block->frame)
@@ -367,7 +371,8 @@ btr_cur_latch_leaves(
 			ut_a(btr_page_get_next(get_block->frame, mtr)
 			     == page_get_page_no(page));
 #endif /* UNIV_BTR_DEBUG */
-			get_block->check_index_page_at_flush = TRUE;
+				get_block->check_index_page_at_flush = TRUE;
+			}
 		}
 
 		get_block = btr_block_get(
