@@ -2637,7 +2637,7 @@ fseg_page_alloc_get_rel_offset(
 		} else if (flag == FSEG_PAGE_FROM_LAST_EXTENT) {
 
 			ut_ad(!(ret_page == FIL_NULL) && ret_page);
-			*rel_offset = FSP_EXTENT_SIZE +
+			*rel_offset = FSP_EXTENT_SIZE/2 +
 				      (flst_get_len(seg_inode + FSEG_EXTENT, mtr)
 				       *(ret_page % FSP_EXTENT_SIZE));
 
@@ -2762,6 +2762,7 @@ fseg_alloc_free_page_low(
 	ulint		n;
 	ulint		next_page_offset = 0;
 	buf_block_t*	block;
+	ulint		free_page_no;
 
 //	ut_ad((direction >= FSP_UP) && (direction <= FSP_NO_DIR));
 	ut_ad(mach_read_from_4(seg_inode + FSEG_MAGIC_N)
@@ -2927,19 +2928,18 @@ fseg_alloc_free_page_low(
 
 		return (block);
 		/*-----------------------------------------------------------*/
-	}  else if (ulint page_no =
-		       mach_read_from_4(seg_inode + FSEG_NEXT_FREE) !=
-		       FIL_NULL) {
+	} else if ((free_page_no = mach_read_from_4(
+			seg_inode + FSEG_NEXT_FREE)) != FIL_NULL) {
 		/* 5. We take next page in extent
 		==============================================*/
 		ret_descr = xdes_get_descriptor_with_space_hdr(
-		    space_header, space, page_no, mtr);
+		    space_header, space, free_page_no, mtr);
 
 		if (ret_descr == NULL) {
 			ret_page = FIL_NULL;
 		} else {
-			ret_page = page_no;
-			next_page_offset = page_no + 1;
+			ret_page = free_page_no;
+			next_page_offset = free_page_no + 1;
 //			mlog_write_ulint(seg_inode + FSEG_NEXT_FREE, page_no + 1,
 //					 MLOG_4BYTES, mtr);
 
