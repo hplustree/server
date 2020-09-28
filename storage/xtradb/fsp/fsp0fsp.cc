@@ -612,6 +612,7 @@ xdes_get_rel_offset(
 	ulint 	alloc_page_no;
 	page_t* alloc_page;
 	ulint 	rel_offset;
+	ulint 	extent_pos;
 
 	ut_ad(descr);
 
@@ -625,7 +626,9 @@ xdes_get_rel_offset(
 
 	rel_offset = mach_read_from_2(alloc_page + PAGE_HEADER + PAGE_REL_OFFSET);
 
-	return (rel_offset - (rel_offset % FSP_EXTENT_SIZE));
+	extent_pos = (rel_offset - FSEG_FRAG_ARR_N_SLOTS) / FSP_EXTENT_SIZE;
+
+	return ((extent_pos * FSP_EXTENT_SIZE) + 32);
 
 }
 #endif /* !UNIV_HOTBACKUP */
@@ -2637,7 +2640,7 @@ fseg_page_alloc_get_rel_offset(
 		} else if (flag == FSEG_PAGE_FROM_LAST_EXTENT) {
 
 			ut_ad(!(ret_page == FIL_NULL) && ret_page);
-			*rel_offset = FSP_EXTENT_SIZE/2 +
+			*rel_offset = FSEG_FRAG_ARR_N_SLOTS +
 				      (flst_get_len(seg_inode + FSEG_EXTENT, mtr)
 				       *(ret_page % FSP_EXTENT_SIZE));
 
