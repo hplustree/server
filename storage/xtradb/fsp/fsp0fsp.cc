@@ -2935,7 +2935,8 @@ fseg_alloc_free_page_low(
 	} else if (((free_page_no = mach_read_from_4(
 	    seg_inode + FSEG_NEXT_FREE)) != FIL_NULL) &&
 		   !!(ret_descr = xdes_get_descriptor_with_space_hdr(
-		       space_header, space, free_page_no, mtr))) {
+		       space_header, space, free_page_no, mtr)) &&
+		   xdes_get_state(ret_descr, mtr) == XDES_FSEG) {
 		/* 5. We take next page in extent
 		==============================================*/
 
