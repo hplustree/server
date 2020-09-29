@@ -5,11 +5,10 @@
 /** Unit test case for the function create_tablespace(). */
 
 #include <fil0fil.h>
+#include <ctime>
+#include <tap.h>
 
-
-int main(int argc __attribute__((unused)),char *argv[])
-{
-
+void setup(){
   // init variables (values and code are selected after closely inspecting them in debug menu)
 
   // mutexes
@@ -37,14 +36,42 @@ int main(int argc __attribute__((unused)),char *argv[])
   // for granting write permissions
   srv_allow_writes_event = os_event_create();
   os_event_set(srv_allow_writes_event);
+}
 
-  // tablespace creation
-  dberr_t code = fil_create_new_single_table_tablespace(100, "t110", "data", 0, 80, 4, FIL_ENCRYPTION_OFF, 1);
+void get_strtime(char* ret_str, int size){
+  time_t rawtime;
+  struct tm* timeinfo;
+  time (&rawtime);
+  timeinfo = localtime(&rawtime);
+  strftime(ret_str,size,"%d-%m-%Y %H:%M:%S",timeinfo);
+}
 
-  if(code == dberr_t::DB_SUCCESS) {
-    printf("tablespace created");
-  }
+void test_create_tablespace(){
 
+  char tablename[80];
+  get_strtime(tablename, sizeof(tablename));
+
+  dberr_t code = fil_create_new_single_table_tablespace(100, tablename, NULL, 0, 80, 4, FIL_ENCRYPTION_OFF, 1);
+
+  ok(code == dberr_t::DB_SUCCESS, "Tablespace creation");
+}
+
+int main(int argc __attribute__((unused)),char *argv[])
+{
+
+  MY_INIT(argv[0]);
+
+  // count is the number of tests to run in this file
+  plan(1);
+
+  // setup
+  setup();
+
+  // test1: create tablespace
+  test_create_tablespace();
+
+  my_end(0);
+  return exit_status();
   // TODO: the below code
   //check tablespace
 //  ulint check = fil_open_single_table_tablespace(false, false, 1, 0, "TEMP/t1", "t1");
