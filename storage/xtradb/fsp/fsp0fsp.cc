@@ -2641,8 +2641,9 @@ fseg_page_alloc_get_rel_offset(
 
 			ut_ad(!(ret_page == FIL_NULL) && ret_page);
 			*rel_offset = FSEG_FRAG_ARR_N_SLOTS +
-				      (flst_get_len(seg_inode + FSEG_EXTENT, mtr)
-				       *(ret_page % FSP_EXTENT_SIZE));
+				      (flst_get_len(seg_inode + FSEG_EXTENT, mtr) - 1) *
+					  FSP_EXTENT_SIZE +
+				      (ret_page % FSP_EXTENT_SIZE);
 
 		} else if (flag == FSEG_PAGE_FROM_FRAG_FREE_LIST) {
 
@@ -2709,8 +2710,8 @@ fseg_get_abs_offset(
 		descr = xdes_lst_get_descriptor(space, zip_size,
 						flst_get_first(inode + FSEG_EXTENT, mtr), &mtr2);
 
-		for (ulint i=0;i<extent_pos;i++){
-			fil_addr_t next = flst_get_next_addr(descr + XDES_FLST_NODE, mtr);
+		for (ulint i=0 ; i < extent_pos ; i++){
+			fil_addr_t next = flst_get_next_addr(descr + XDES_FLST_NODE, &mtr2);
 			descr = xdes_lst_get_descriptor(space, zip_size, next, &mtr2);
 		}
 
