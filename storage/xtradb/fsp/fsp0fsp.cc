@@ -2829,18 +2829,20 @@ fseg_alloc_free_page_low(
 				    seg_inode, block, space, zip_size, mtr);
 
 				fseg_page_alloc_get_rel_offset(
-				    rel_offset, FSEG_PAGE_FROM_FRAG_FREE_LIST, block, NULL,
-				    FIL_NULL, FIL_NULL, seg_inode, space, zip_size, mtr);
+				    rel_offset, FSEG_PAGE_FROM_FRAG_FREE_LIST,
+				    block, NULL, FIL_NULL, FIL_NULL,
+				    seg_inode, space, zip_size, mtr);
 
 //				*rel_offset = mach_read_from_2(hint_page +
-//							       PAGE_HEADER + PAGE_REL_OFFSET);
+//					PAGE_HEADER + PAGE_REL_OFFSET);
 //				ut_ad(*rel_offset);
 
 			}
 		} else {
 			fseg_page_alloc_get_rel_offset(
-			    rel_offset, FSEG_PAGE_FROM_ANY_EXTENT, NULL, ret_descr,
-			    ret_page, FIL_NULL, seg_inode, space, zip_size, mtr);
+			    rel_offset, FSEG_PAGE_FROM_ANY_EXTENT, NULL,
+			    ret_descr, ret_page, FIL_NULL, seg_inode, space,
+			    zip_size, mtr);
 
 //			*rel_offset = xdes_get_rel_offset(ret_descr, space,
 //							  zip_size, mtr)
@@ -2942,21 +2944,50 @@ fseg_alloc_free_page_low(
 
 		ut_ad(ret_descr);
 
-		ret_page = free_page_no;
-		next_page_offset = free_page_no + 1;
+		if (xdes_mtr_get_bit(ret_descr, XDES_FREE_BIT,
+				     free_page_no % FSP_EXTENT_SIZE, mtr)) {
+			ret_page = free_page_no;
+			next_page_offset = free_page_no + 1;
 //			mlog_write_ulint(seg_inode + FSEG_NEXT_FREE, page_no + 1,
 //					 MLOG_4BYTES, mtr);
 
-		fseg_page_alloc_get_rel_offset(
-		    rel_offset, FSEG_PAGE_FROM_ANY_EXTENT, NULL, ret_descr,
-		    ret_page, FIL_NULL, seg_inode, space, zip_size, mtr);
+			fseg_page_alloc_get_rel_offset(
+			    rel_offset, FSEG_PAGE_FROM_ANY_EXTENT, NULL,
+			    ret_descr, ret_page, FIL_NULL, seg_inode, space,
+			    zip_size, mtr);
 
 //			*rel_offset = xdes_get_rel_offset(ret_descr, space, zip_size, mtr)
-//				   + (ret_page % FSP_EXTENT_SIZE);
+//				      + (ret_page % FSP_EXTENT_SIZE);
+		}
+		else{
+			ulint last_page = xdes_get_offset(ret_descr) + FSP_EXTENT_SIZE;
+			for (ulint i=free_page_no+1;i<last_page;i++) {
+				if (xdes_mtr_get_bit(ret_descr, XDES_FREE_BIT,
+						     i % FSP_EXTENT_SIZE, mtr)){
+					ret_page = i;
+					next_page_offset = ret_page + 1;
+//					mlog_write_ulint(seg_inode + FSEG_NEXT_FREE,
+//					page_no + 1, MLOG_4BYTES, mtr);
+
+					fseg_page_alloc_get_rel_offset(
+					    rel_offset,
+					    FSEG_PAGE_FROM_ANY_EXTENT, NULL,
+					    ret_descr, ret_page, FIL_NULL,
+					    seg_inode, space, zip_size, mtr);
+					break;
+				}
+				else {
+					if (i == last_page - 1) {
+						goto allocate_extent;
+					}
+				}
+			}
+		}
 		/*-----------------------------------------------------------*/
 	} else {
 		/* 6. We allocate a new extent and take its first page
 		======================================================*/
+	allocate_extent :
 		ret_descr = fseg_alloc_free_extent(seg_inode,
 						   space, zip_size, mtr);
 
