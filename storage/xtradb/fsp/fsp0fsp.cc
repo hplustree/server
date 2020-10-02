@@ -628,7 +628,7 @@ xdes_get_rel_offset(
 
 	extent_pos = (rel_offset - FSEG_FRAG_ARR_N_SLOTS) / FSP_EXTENT_SIZE;
 
-	return ((extent_pos * FSP_EXTENT_SIZE) + 32);
+	return ((extent_pos * FSP_EXTENT_SIZE) + FSEG_FRAG_ARR_N_SLOTS);
 
 }
 #endif /* !UNIV_HOTBACKUP */
