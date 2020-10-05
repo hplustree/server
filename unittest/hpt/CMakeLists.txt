@@ -357,3 +357,14 @@ ADD_EXECUTABLE(create_tablespace-t create_tablespace-t.cc ../../sql/mf_iocache_e
 TARGET_LINK_LIBRARIES(create_tablespace-t sql)
 ADD_DEPENDENCIES(create_tablespace-t GenError)
 MY_ADD_TEST(create_tablespace)
+
+INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/sql
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/storage/xtradb/include
+        ${CMAKE_SOURCE_DIR}/storage/xtradb/btr)
+
+ADD_EXECUTABLE(index-t index-t.cc ../../sql/mf_iocache_encr.cc ../../storage/xtradb/btr/btr0btr.cc)
+
+TARGET_LINK_LIBRARIES(index-t sql)
+ADD_DEPENDENCIES(index-t GenError)
+MY_ADD_TEST(index-t)
