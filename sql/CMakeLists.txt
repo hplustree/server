@@ -250,6 +250,7 @@ IF(MSVC AND NOT WITHOUT_DYNAMIC_PLUGINS)
 ENDIF()
 
 MYSQL_ADD_EXECUTABLE(mysqld ${MYSQLD_SOURCE} DESTINATION ${INSTALL_SBINDIR} COMPONENT Server)
+INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/sql ${CMAKE_SOURCE_DIR}/include/mysql/psi)
 
 IF(APPLE) 
   # Add CoreServices framework since some dloadable plugins may need it 
