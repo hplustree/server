@@ -350,11 +350,11 @@ ENDIF()
 
 INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/sql
         ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/include/mysql
         ${CMAKE_SOURCE_DIR}/storage/xtradb/include
         ${CMAKE_SOURCE_DIR}/unittest/mytap)
 
-ADD_EXECUTABLE(create_tablespace-t create_tablespace-t.cc ../../sql/mf_iocache_encr.cc)
-
+ADD_EXECUTABLE(create_tablespace-t create_tablespace-t.cc ../../sql/mf_iocache_encr.cc ../../libmysql/libmysql.c)
 TARGET_LINK_LIBRARIES(create_tablespace-t sql mytap)
 ADD_DEPENDENCIES(create_tablespace-t GenError)
 MY_ADD_TEST(create_tablespace)
