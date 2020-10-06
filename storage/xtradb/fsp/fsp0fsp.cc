@@ -2556,8 +2556,10 @@ fseg_frag_free_page_add(
 
 		mlog_write_ulint( seg_inode + FSEG_FRAG_PAGE_LAST, page_offset, MLOG_4BYTES, mtr);
 
-		last_block = buf_page_get(space, zip_size, last_page_no,
-					  RW_X_LATCH, mtr);
+		last_block = buf_page_get_gen(space, zip_size, last_page_no,
+					  RW_X_LATCH, NULL, BUF_GET_POSSIBLY_FREED,
+					  __FILE__, __LINE__, mtr);
+
 		last_page = buf_block_get_frame(last_block);
 		btr_page_set_next(last_page, buf_block_get_page_zip(last_block), page_offset, mtr);
 
