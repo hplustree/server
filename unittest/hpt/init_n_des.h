@@ -408,12 +408,12 @@ static void innodb_init_params(){
   /* Check that values don't overflow on 32-bit systems. */
   if (sizeof(ulint) == 4) {
     if (buf_pool_size > UINT_MAX32) {
-      printf("mariabackup: use-memory can't be over 4GB"
+      printf("InnnoDB: use-memory can't be over 4GB"
              " on 32-bit systems\n");
     }
 
     if (innobase_log_file_size > UINT_MAX32) {
-      printf("mariabackup: innobase_log_file_size can't be "
+      printf("InnnoDB: innobase_log_file_size can't be "
              "over 4GB on 32-bit systemsi\n");
       exit(EXIT_FAILURE);
     }
