@@ -363,3 +363,8 @@ ADD_EXECUTABLE(create_index-t create_index-t.cc ../../sql/mf_iocache_encr.cc ../
 TARGET_LINK_LIBRARIES(create_index-t sql mytap)
 ADD_DEPENDENCIES(create_index-t GenError)
 MY_ADD_TEST(create_index)
+
+ADD_EXECUTABLE(insert-t insert-t.cc ../../sql/mf_iocache_encr.cc ../../libmysql/libmysql.c)
+TARGET_LINK_LIBRARIES(insert-t sql mytap)
+ADD_DEPENDENCIES(insert-t GenError)
+MY_ADD_TEST(insert_operation)
