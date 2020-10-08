@@ -51,14 +51,12 @@ int main(int argc __attribute__((unused)),char *argv[])
   // test2: open tablespace
   test_open_tablespace(tablename);
 
-  // TODO: delete table space file (.ibd patch)
-  char file_name[100];
-  int dirnamelen = strlen(srv_data_home);
-  memcpy(file_name, srv_data_home, dirnamelen);
-  strcpy(file_name + dirnamelen, tablename);
-  remove(file_name);
-
   destroy();
+
+  // delete the created tablespace file
+  char file_name[100];
+  snprintf(file_name, sizeof(file_name), "%s%s.ibd", srv_data_home, tablename);
+  remove(file_name);
 
   my_end(0);
   return exit_status();

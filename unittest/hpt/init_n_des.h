@@ -251,6 +251,7 @@ static void load_log_files(void){
 }
 
 static void init_srv_variables(void){
+  // TODO: innodb_encrypt_tables=ON/OFF
 
   srv_read_only_mode = FALSE;
   srv_adaptive_flushing = FALSE;
@@ -344,7 +345,6 @@ static void init_srv_variables(void){
 #elif defined(LINUX_NATIVE_AIO)
 
   if (srv_use_native_aio) {
-    ut_print_timestamp(stderr);
     printf("InnoDB: Using Linux native AIO\n");
   }
 #else
