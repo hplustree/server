@@ -14,7 +14,7 @@ void fill_dict_table(char* name, dict_table_t* ret_table){
   ret_table->name = (char *) name;
 
   // Get a new table id.
-  dict_hdr_get_new_id(&(ret_table->id), NULL, NULL);
+  dict_hdr_get_new_id(&(ret_table->id), nullptr, nullptr);
 
   // refer dict_tf_set()
   ret_table->flags = DICT_TF_COMPACT;
@@ -26,7 +26,7 @@ bool create_user_tablespace(dict_table_t* table){
   ulint space_id;
 
   // Get a new space id.
-  dict_hdr_get_new_id(NULL, NULL, &space_id);
+  dict_hdr_get_new_id(nullptr, nullptr, &space_id);
 
   // We create a new single-table tablespace for the table.
   // We initially let it be 4 pages:

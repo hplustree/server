@@ -20,7 +20,7 @@ dict_index_t* get_dict_index(dict_table_t table, ulint num_fields){
 
 
   // Get a new index id.
-  dict_hdr_get_new_id(&(ret_index->id), NULL, NULL);
+  dict_hdr_get_new_id(nullptr, &(ret_index->id), nullptr);
 
   ret_index->table = &table;
 
