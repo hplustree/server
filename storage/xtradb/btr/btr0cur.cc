@@ -1842,60 +1842,71 @@ btr_cur_pessimistic_insert(
 		return(DB_SUCCESS);
 	}
 
+	trx_id_t trx_id;
+	if (!(flags & BTR_NO_LOCKING_FLAG)){
+		trx_id = thr_get_trx(thr)->id;
+	} else {
+		trx_id = 0;
+	}
+
 	if (dict_index_get_page(index)
 	    == buf_block_get_page_no(btr_cur_get_block(cursor))) {
 
 		/* The page is the root page */
-		*rec = btr_root_raise_and_insert(
-			flags, cursor, offsets, heap, entry, n_ext, mtr);
+		err = btr_root_raise_and_insert(
+			flags, cursor, offsets, heap, entry, n_ext, trx_id, mtr);
 	} else {
-		*rec = btr_page_split_and_insert(
-			flags, cursor, offsets, heap, entry, n_ext, mtr);
+		err = btr_page_split_and_insert(
+			flags, cursor, offsets, heap, entry, n_ext, trx_id, mtr);
 	}
 
-	if (*rec == NULL && os_has_said_disk_full) {
-		return(DB_OUT_OF_FILE_SPACE);
+	if (err == DB_OUT_OF_FILE_SPACE && os_has_said_disk_full){
+
+		return (DB_OUT_OF_FILE_SPACE);
 	}
-
-	ut_ad(page_rec_get_next(btr_cur_get_rec(cursor)) == *rec);
-
-	if (!(flags & BTR_NO_LOCKING_FLAG)) {
-		/* The cursor might be moved to the other page,
-		and the max trx id field should be updated after
-		the cursor was fixed. */
-		if (!dict_index_is_clust(index)) {
-			page_update_max_trx_id(
-				btr_cur_get_block(cursor),
-				btr_cur_get_page_zip(cursor),
-				thr_get_trx(thr)->id, mtr);
-		}
-
-		if (!page_rec_is_infimum(btr_cur_get_rec(cursor))) {
-			/* split and inserted need to call
-			lock_update_insert() always. */
-			inherit = TRUE;
-		}
-
-		buf_block_t* block = btr_cur_get_block(cursor);
-		buf_frame_t* frame = NULL;
-
-		if (block) {
-			frame = buf_block_get_frame(block);
-		}
-		/* split and inserted need to call
-		lock_update_insert() always. */
-		if (frame &&  btr_page_get_prev(frame, mtr) == FIL_NULL) {
-			inherit = TRUE;
-		}
-	}
-
-#ifdef BTR_CUR_ADAPT
-	btr_search_update_hash_on_insert(cursor);
-#endif
-	if (inherit && !(flags & BTR_NO_LOCKING_FLAG)) {
-
-		lock_update_insert(btr_cur_get_block(cursor), *rec);
-	}
+//	if (*rec == NULL && os_has_said_disk_full) {
+//		return(DB_OUT_OF_FILE_SPACE);
+//	}
+//
+//	ut_ad(page_rec_get_next(btr_cur_get_rec(cursor)) == *rec);
+//
+//	if (!(flags & BTR_NO_LOCKING_FLAG)) {
+//		/* The cursor might be moved to the other page,
+//		and the max trx id field should be updated after
+//		the cursor was fixed. */
+//		if (!dict_index_is_clust(index)) {
+//			page_update_max_trx_id(
+//				btr_cur_get_block(cursor),
+//				btr_cur_get_page_zip(cursor),
+//				thr_get_trx(thr)->id, mtr);
+//		}
+//
+//		if (!page_rec_is_infimum(btr_cur_get_rec(cursor))) {
+//			/* split and inserted need to call
+//			lock_update_insert() always. */
+//			inherit = TRUE;
+//		}
+//
+//		buf_block_t* block = btr_cur_get_block(cursor);
+//		buf_frame_t* frame = NULL;
+//
+//		if (block) {
+//			frame = buf_block_get_frame(block);
+//		}
+//		/* split and inserted need to call
+//		lock_update_insert() always. */
+//		if (frame &&  btr_page_get_prev(frame, mtr) == FIL_NULL) {
+//			inherit = TRUE;
+//		}
+//	}
+//
+//#ifdef BTR_CUR_ADAPT
+//	btr_search_update_hash_on_insert(cursor);
+//#endif
+//	if (inherit && !(flags & BTR_NO_LOCKING_FLAG)) {
+//
+//		lock_update_insert(btr_cur_get_block(cursor), *rec);
+//	}
 
 	if (n_reserved > 0) {
 		fil_space_release_free_extents(index->space, n_reserved);

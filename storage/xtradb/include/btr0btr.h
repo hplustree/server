@@ -478,7 +478,7 @@ we cannot reverse it: therefore enough free disk space must be
 guaranteed to be available before this function is called.
 @return	inserted record */
 UNIV_INTERN
-rec_t*
+dberr_t
 btr_root_raise_and_insert(
 /*======================*/
 	ulint		flags,	/*!< in: undo logging and locking flags */
@@ -491,8 +491,9 @@ btr_root_raise_and_insert(
 				that can be emptied, or NULL */
 	const dtuple_t*	tuple,	/*!< in: tuple to insert */
 	ulint		n_ext,	/*!< in: number of externally stored columns */
+	trx_id_t	trx_id,
 	mtr_t*		mtr)	/*!< in: mtr */
-	__attribute__((nonnull(2,3,4,7), warn_unused_result));
+	__attribute__((nonnull(2,3,4,8), warn_unused_result));
 /*************************************************************//**
 Reorganizes an index page.
 
@@ -574,7 +575,7 @@ this function is called.
 
 @return inserted record */
 UNIV_INTERN
-rec_t*
+dberr_t
 btr_page_split_and_insert(
 /*======================*/
 	ulint		flags,	/*!< in: undo logging and locking flags */
@@ -586,8 +587,9 @@ btr_page_split_and_insert(
 				that can be emptied, or NULL */
 	const dtuple_t*	tuple,	/*!< in: tuple to insert */
 	ulint		n_ext,	/*!< in: number of externally stored columns */
+	trx_id_t	trx_id,
 	mtr_t*		mtr)	/*!< in: mtr */
-	__attribute__((nonnull(2,3,4,7), warn_unused_result));
+	__attribute__((nonnull(2,3,4,8), warn_unused_result));
 /*******************************************************//**
 Inserts a data tuple to a tree on a non-leaf level. It is assumed
 that mtr holds an x-latch on the tree. */
