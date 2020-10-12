@@ -634,28 +634,21 @@ void
 remove_local_files(){
   // code to remove data, log and undo files
   char file_name[10000];
-  int dirnamelen;
 
-  dirnamelen = strlen(srv_data_home);
-  memcpy(file_name, srv_data_home, dirnamelen);
   for (unsigned int i=1; i <= srv_n_data_files; i++){
-    snprintf(file_name + dirnamelen, sizeof(file_name) - dirnamelen,
-             "ibdata%d", i);
+    snprintf(file_name, sizeof(file_name),
+             "%sibdata%d", srv_data_home, i);
     remove(file_name);
   }
 
-  dirnamelen = strlen(srv_log_group_home_dir);
-  memcpy(file_name, srv_log_group_home_dir, dirnamelen);
   for (unsigned int i=0; i < srv_n_log_files; i++){
-    snprintf(file_name + dirnamelen, sizeof(file_name) - dirnamelen,
-             "ib_logfile%d", i);
+    snprintf(file_name, sizeof(file_name),
+             "%sib_logfile%d", srv_log_group_home_dir, i);
     remove(file_name);
   }
 
-  dirnamelen = strlen(srv_undo_dir);
-  memcpy(file_name, srv_data_home, dirnamelen);
   for (unsigned long int i=1; i <= srv_undo_tablespaces; i++){
-    snprintf(file_name + dirnamelen, sizeof(file_name) - dirnamelen,
+    snprintf(file_name, sizeof(file_name),
              "%s%cundo%03lu", srv_undo_dir, SRV_PATH_SEPARATOR, i);
     remove(file_name);
   }
