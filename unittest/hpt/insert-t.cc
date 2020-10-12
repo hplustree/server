@@ -6,7 +6,7 @@
 #include "tablespace.h"
 #include <dict0boot.h>
 #include <que0que.h>
-#include <row0types.h>
+#include <row0ins.h>
 #include <random>
 #include <iostream>
 
@@ -72,6 +72,12 @@ void test_create_index(dict_index_t *index, dict_table_t *table,
      "Created index");
 }
 
+extern dtuple_t*
+row_get_prebuilt_insert_row(
+/*========================*/
+    row_prebuilt_t*	prebuilt);	/*!< in: prebuilt struct in MySQL
+					handle */
+
 void test_insert(dict_index_t *index, dict_table_t *table, ulint length)
 {
   btr_cur_t cursor;
@@ -110,6 +116,19 @@ void test_insert(dict_index_t *index, dict_table_t *table, ulint length)
     mysql_rec = (unsigned char*)value1;
     strcat((char*)mysql_rec, (char*)value2);
 
+//    ib_table = dict_table_open_on_name(norm_name, FALSE, TRUE, ignore_err);
+//    tdc_acquire_share
+//    prepare_frm_header
+//    pack_header
+//    reclength=uint2korr(forminfo+266);
+//    data_offset= (create_info->null_bits + 7) / 8;
+//    if ((uint) field->offset+ (uint) data_offset+ length > reclength)
+    //      reclength=(uint) (field->offset+ data_offset + length);
+//    reclength=MY_MAX(file->min_record_length(table_options),reclength);
+//    reclength= data_offset;
+//    uint32 pack_length() const { return (uint32) (field_length + 7) / 8; }
+//    create_info->null_bits++;
+
     row_prebuilt_t *pre_built= row_create_prebuilt(table, mysql_row_len);
 
     row_get_prebuilt_insert_row(pre_built);
@@ -128,8 +147,8 @@ void test_insert(dict_index_t *index, dict_table_t *table, ulint length)
 
     ut_ad(dtuple_check_typed(node->entry));
 
-    dberr_t err= btr_cur_search_to_nth_level(index, 0, entry, PAGE_CUR_LE,
-                                             BTR_MODIFY_LEAF, &cursor, 0,
+    dberr_t err= btr_cur_search_to_nth_level(index, 0, node->entry, PAGE_CUR_LE,
+                                             BTR_MODIFY_LEAF | BTR_INSERT, &cursor, 0,
                                              __FILE__, __LINE__, &mtr);
     if (err != DB_SUCCESS)
     {
@@ -139,12 +158,12 @@ void test_insert(dict_index_t *index, dict_table_t *table, ulint length)
       exit(1);
     }
 
-    err= btr_cur_optimistic_insert(0, &cursor, &offsets, &heap, entry, &rec,
+    err= btr_cur_optimistic_insert(0, &cursor, &offsets, &heap, node->entry, &rec,
                                    &big_rec, 0, que_thr, &mtr);
 
     if (err == DB_FAIL)
     {
-      err= btr_cur_pessimistic_insert(0, &cursor, &offsets, &heap, entry, &rec,
+      err= btr_cur_pessimistic_insert(0, &cursor, &offsets, &heap, node->entry, &rec,
                                       &big_rec, 0, que_thr, &mtr);
     }
 

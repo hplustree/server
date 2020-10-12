@@ -639,29 +639,37 @@ remove_local_files(){
   dirnamelen = strlen(srv_data_home);
   memcpy(file_name, srv_data_home, dirnamelen);
   for (unsigned int i=1; i <= srv_n_data_files; i++){
-    snprintf(file_name + dirnamelen, sizeof(file_name) - dirnamelen, "ibdata%d", i);
+    snprintf(file_name + dirnamelen, sizeof(file_name) - dirnamelen,
+             "ibdata%d", i);
     remove(file_name);
   }
 
   dirnamelen = strlen(srv_log_group_home_dir);
   memcpy(file_name, srv_log_group_home_dir, dirnamelen);
   for (unsigned int i=0; i < srv_n_log_files; i++){
-    snprintf(file_name + dirnamelen, sizeof(file_name) - dirnamelen, "ib_logfile%d", i);
+    snprintf(file_name + dirnamelen, sizeof(file_name) - dirnamelen,
+             "ib_logfile%d", i);
     remove(file_name);
   }
 
-  dirnamelen = strlen(srv_data_home);
+  dirnamelen = strlen(srv_undo_dir);
   memcpy(file_name, srv_data_home, dirnamelen);
-  for (unsigned int i=1; i <= srv_undo_tablespaces; i++){
-    snprintf(file_name + dirnamelen, sizeof(file_name) - dirnamelen, "undo%03d", i);
+  for (unsigned long int i=1; i <= srv_undo_tablespaces; i++){
+    snprintf(file_name + dirnamelen, sizeof(file_name) - dirnamelen,
+             "%s%cundo%03lu", srv_undo_dir, SRV_PATH_SEPARATOR, i);
     remove(file_name);
   }
 
 }
 
-// TODO: solve
-//  Warning:    8 bytes lost at 0x5617d125a830, allocated by T@0 at mysys/my_malloc.c:241, hpt/init_n_des.h:366, hpt/init_n_des.h:427, hpt/init_n_des.h:610, hpt/dummy-t.cc:46, csu/libc-start.c:344, 0x5617ce53424a
-//  Memory lost: 8 bytes in 1 chunks
+static
+void
+free_my_alloc_vars(){
+  // free the variables allocated using my_alloc to avoid memory leaks
+  my_free(srv_undo_dir);
+}
+
+
 void destroy(){
 // done in innodb_shutdown, still kept for reference
 //  mem_close();
@@ -677,5 +685,7 @@ void destroy(){
   innodb_free_params();
 
   remove_local_files();
+
+  free_my_alloc_vars();
 }
 
