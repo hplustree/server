@@ -6,226 +6,371 @@
 #include "tablespace.h"
 #include <dict0boot.h>
 #include <que0que.h>
+#include <trx0trx.h>
 #include "../../storage/xtradb/row/row0mysql.cc"
 #include "../../storage/xtradb/row/row0ins.cc"
 #include "../../storage/xtradb/dict/dict0dict.cc"
 #include <random>
 
+dict_index_t *build_clust_index_def(dict_table_t *table, dict_index_t *index);
+
+void dict_add_sys_cols(dict_table_t *table, mem_heap_t *heap);
+
 void test_create_index(dict_index_t *index, dict_table_t *table,
-                       char *table_name)
-{
+                       char *table_name) {
 
-  // create table test (id int, name int);
+    // create table test (id int, name int);
 
-  ulint type= 1;
-  ulint space= 100;
-  ulint zip_size= 0;
-  index_id_t index_id= (index_id_t) 22;
-  ulint n_fields= 5;
-  ulint n_cols= 2;
-  ulint flags= DICT_TF_COMPACT;
-  ulint flags2= 80;
-  const char *index_name= "GEN_CLUST_INDEX";
-  mtr_t mtr;
-  ulint root_page_no= FIL_NULL;
+    ulint type = 1;
+    ulint space = 100;
+    ulint zip_size = 0;
+    ulint n_fields = 0;
+    ulint n_cols = 2;
+    ulint flags = DICT_TF_COMPACT;
+    ulint flags2 = 80;
+    const char *index_name = "GEN_CLUST_INDEX";
+    mtr_t mtr;
+    ulint root_page_no = FIL_NULL;
 
-  mem_heap_t* heap = mem_heap_create(450);
+    mem_heap_t *heap = mem_heap_create(450);
 
-  *table= *dict_mem_table_create(table_name, space, n_cols, flags, flags2);
+    // create table object
+    *table = *dict_mem_table_create(table_name, space, n_cols, flags, flags2);
 
-  dict_mem_table_add_col(table, heap, "DB_ROW_ID", DATA_SYS,
-                         DATA_ROW_ID | DATA_NOT_NULL,
-                         DATA_ROW_ID_LEN);
-  dict_mem_table_add_col(table, heap, "DB_TRX_ID", DATA_SYS,
-                         DATA_TRX_ID | DATA_NOT_NULL,
-                         DATA_TRX_ID_LEN);
-  dict_mem_table_add_col(table, heap, "DB_ROLL_PTR", DATA_SYS,
-                         DATA_ROLL_PTR | DATA_NOT_NULL,
-                         DATA_ROLL_PTR_LEN);
-  dict_mem_table_add_col(table, heap, "id", DATA_INT, 0, 4);
-  dict_mem_table_add_col(table, heap, "value", DATA_INT, 0, 4);
+    dict_mem_table_add_col(table, heap, "id", DATA_INT, 0, 4);
+    dict_mem_table_add_col(table, heap, "value", DATA_INT, 0, 4);
+    dict_add_sys_cols(table, heap);
 
-  dict_hdr_get_new_id(&table->id, NULL, NULL);
-  UT_LIST_INIT(table->indexes);
-  //  dict_table_add_to_cache(table, FALSE, heap);
+    dict_hdr_get_new_id(&table->id, NULL, NULL);
+    UT_LIST_INIT(table->indexes);
+    //  dict_table_add_to_cache(table, FALSE, heap);
 
-  mtr_start(&mtr);
+    mtr_start(&mtr);
 
-  dberr_t code= fil_create_new_single_table_tablespace(
-      space, table->name, NULL, dict_tf_to_fsp_flags(table->flags),
-      table->flags2, FIL_IBD_FILE_INITIAL_SIZE, FIL_ENCRYPTION_OFF, 1);
+    // create tablespace
+    dberr_t code = fil_create_new_single_table_tablespace(
+            space, table->name, NULL, dict_tf_to_fsp_flags(table->flags),
+            table->flags2, FIL_IBD_FILE_INITIAL_SIZE, FIL_ENCRYPTION_OFF, 1);
 
-  fsp_header_init(table->space, FIL_IBD_FILE_INITIAL_SIZE, &mtr);
+    fsp_header_init(table->space, FIL_IBD_FILE_INITIAL_SIZE, &mtr);
 
-  ok(code == dberr_t::DB_SUCCESS, "Table creation");
+    ok(code == dberr_t::DB_SUCCESS, "Table creation");
 
-  *index= *dict_mem_index_create(table_name, index_name, space, type, n_fields);
-  *index = *dict_index_build_internal_clust(table, index);
+    // create index object
+    *index = *dict_mem_index_create(table_name, index_name, space, type, n_fields);
 
-//  index->id= index_id;
-//  index->trx_id_offset= 6;
-//  index->n_user_defined_cols= 0;
-//  index->n_uniq= 1;
-//  index->n_def= 5;
-//  index->n_nullable= 2;
-//  index->cached= 1;
-//  index->to_be_dropped= 0;
-//  index->online_status= 0;
-//  index->table= table;
+    *index = *build_clust_index_def(table, index);
 
-//  btr_search_index_init(index);
+    index->table = table;
+    dict_hdr_get_new_id(NULL, &index->id, NULL);
 
-//  dberr_t err= dict_index_add_to_cache(table, index, root_page_no, FALSE);
-//  ut_a(err == DB_SUCCESS);
+    // create tree
+    root_page_no = btr_create(type, space, zip_size, (index_id_t) &index->id, index, &mtr);
+    index->page = root_page_no;
+    printf("\nroot page number : %lul \n", root_page_no);
 
-  root_page_no= btr_create(type, space, zip_size, index_id, index, &mtr);
-  index->page= root_page_no;
-  printf("\nroot page number : %lul \n", root_page_no);
+    page_t *root = btr_root_get(index, &mtr);
+    UT_LIST_ADD_LAST(indexes, table->indexes, index);
 
-  page_t *root= btr_root_get(index, &mtr);
-  UT_LIST_ADD_LAST(indexes, table->indexes, index);
+    mem_heap_free(heap);
+    mtr_commit(&mtr);
 
-  mem_heap_free(heap);
-  mtr_commit(&mtr);
-
-  ok(mach_read_from_4(root + FIL_PAGE_OFFSET) == root_page_no,
-     "Created index");
+    ok(mach_read_from_4(root + FIL_PAGE_OFFSET) == root_page_no,
+       "Created index");
 }
 
-extern dtuple_t*
-row_get_prebuilt_insert_row(
-/*========================*/
-    row_prebuilt_t*	prebuilt);	/*!< in: prebuilt struct in MySQL
-					handle */
+dict_index_t *build_clust_index_def(dict_table_t *table, dict_index_t *index) {
+    dict_index_t *new_index;
+    dict_field_t *field;
+    ulint trx_id_pos;
+    ulint i;
+    ibool *indexed;
 
-void test_insert(dict_index_t *index, dict_table_t *table, ulint length)
-{
-  btr_cur_t cursor;
-  ulint *offsets= NULL;
-  rec_t *rec;
-  ins_node_t *node= NULL;
-  que_thr_t *que_thr= NULL;
-  mtr_t mtr;
-  big_rec_t *big_rec= NULL;
-  mem_heap_t *heap= NULL;
-  byte *mysql_rec= NULL;
-  ulint mysql_row_len= 9;
-  //  ulint value1, value2;
+    ut_ad(table && index);
+    ut_ad(dict_index_is_clust(index));
+    ut_ad(table->magic_n == DICT_TABLE_MAGIC_N);
 
-  // generate random numbers
-  ulint seed= 42;
-  std::vector<ulint> entries(length);
+    /* Create a new index object with certainly enough fields */
+    new_index = dict_mem_index_create(table->name,
+                                      index->name, table->space,
+                                      index->type,
+                                      index->n_fields + table->n_cols);
 
-  for (ulint i= 1; i <= length; i++)
-  {
-    entries[i]= i;
-  }
+    /* Copy other relevant data from the old index struct to the new
+    struct: it inherits the values */
 
-  std::shuffle(entries.begin(), entries.end(),
-               std::default_random_engine(seed));
+    new_index->n_user_defined_cols = index->n_fields;
 
-  mtr_start(&mtr);
+    new_index->id = index->id;
+    btr_search_index_init(new_index);
 
-  cursor.thr= que_thr;
+    /* Copy the fields of index */
+    dict_index_copy(new_index, index, table, 0, index->n_fields);
 
-  for (ulint i= 0; i < length; i++)
-  {
-    // convert values in bytes; this part will be changed
-    //    value1 = entries[i];
-    //    value2 = value1 * 10;
-    mysql_rec= (unsigned char *) "00011010";
+    if (dict_index_is_univ(index)) {
+        /* No fixed number of fields determines an entry uniquely */
 
-//    ib_table = dict_table_open_on_name(norm_name, FALSE, TRUE, ignore_err);
-//    tdc_acquire_share
-//    prepare_frm_header
-//    pack_header
-//    reclength=uint2korr(forminfo+266);
-//    data_offset= (create_info->null_bits + 7) / 8;
-//    if ((uint) field->offset+ (uint) data_offset+ length > reclength)
-    //      reclength=(uint) (field->offset+ data_offset + length);
-//    reclength=MY_MAX(file->min_record_length(table_options),reclength);
-//    reclength= data_offset;
-//    uint32 pack_length() const { return (uint32) (field_length + 7) / 8; }
-//    create_info->null_bits++;
+        new_index->n_uniq = REC_MAX_N_FIELDS;
 
-    row_prebuilt_t *pre_built= row_create_prebuilt(table, mysql_row_len);
+    } else if (dict_index_is_unique(index)) {
+        /* Only the fields defined so far are needed to identify
+        the index entry uniquely */
 
-    row_get_prebuilt_insert_row(pre_built);
-    node= pre_built->ins_node;
-
-    row_mysql_convert_row_to_innobase(pre_built->ins_node->row, pre_built,
-                                      mysql_rec);
-
-    que_thr= que_fork_get_first_thr(pre_built->ins_graph);
-
-    que_thr->run_node= node;
-    que_thr->prev_node= node;
-
-    ut_ad(dtuple_check_typed(pre_built->ins_node->row));
-
-    row_ins_index_entry_set_vals(node->index, node->entry, node->row);
-
-    ut_ad(dtuple_check_typed(node->entry));
-
-    dberr_t err= btr_cur_search_to_nth_level(index, 0, node->entry, PAGE_CUR_LE,
-                                             BTR_MODIFY_LEAF | BTR_INSERT, &cursor, 0,
-                                             __FILE__, __LINE__, &mtr);
-
-    if (err != DB_SUCCESS)
-    {
-      index->table->file_unreadable= true;
-      mtr_commit(&mtr);
-      ok(0, "search failed");
-      exit(1);
+        new_index->n_uniq = new_index->n_def;
+    } else {
+        /* Also the row id is needed to identify the entry */
+        new_index->n_uniq = 1 + new_index->n_def;
     }
 
-    err= btr_cur_optimistic_insert(0, &cursor, &offsets, &heap, node->entry,
-                                   &rec, &big_rec, 0, que_thr, &mtr);
+    new_index->trx_id_offset = 0;
 
-    if (err == DB_FAIL)
-    {
-      err= btr_cur_pessimistic_insert(0, &cursor, &offsets, &heap, node->entry,
-                                      &rec, &big_rec, 0, que_thr, &mtr);
+    if (!dict_index_is_ibuf(index)) {
+        /* Add system columns, trx id first */
+
+        trx_id_pos = new_index->n_def;
+
+#if DATA_ROW_ID != 0
+# error "DATA_ROW_ID != 0"
+#endif
+#if DATA_TRX_ID != 1
+# error "DATA_TRX_ID != 1"
+#endif
+#if DATA_ROLL_PTR != 2
+# error "DATA_ROLL_PTR != 2"
+#endif
+
+        if (!dict_index_is_unique(index)) {
+            dict_index_add_col(new_index, table,
+                               dict_table_get_sys_col(
+                                       table, DATA_ROW_ID),
+                               0);
+            trx_id_pos++;
+        }
+
+        dict_index_add_col(new_index, table,
+                           dict_table_get_sys_col(table, DATA_TRX_ID),
+                           0);
+
+        dict_index_add_col(new_index, table,
+                           dict_table_get_sys_col(table,
+                                                  DATA_ROLL_PTR),
+                           0);
+
+        for (i = 0; i < trx_id_pos; i++) {
+
+            ulint fixed_size = dict_col_get_fixed_size(
+                    dict_index_get_nth_col(new_index, i),
+                    dict_table_is_comp(table));
+
+            if (fixed_size == 0) {
+                new_index->trx_id_offset = 0;
+
+                break;
+            }
+
+            if (dict_index_get_nth_field(new_index, i)->prefix_len
+                > 0) {
+                new_index->trx_id_offset = 0;
+
+                break;
+            }
+
+            /* Add fixed_size to new_index->trx_id_offset.
+            Because the latter is a bit-field, an overflow
+            can theoretically occur. Check for it. */
+            fixed_size += new_index->trx_id_offset;
+
+            new_index->trx_id_offset = fixed_size;
+
+            if (new_index->trx_id_offset != fixed_size) {
+                /* Overflow. Pretend that this is a
+                variable-length PRIMARY KEY. */
+                ut_ad(0);
+                new_index->trx_id_offset = 0;
+                break;
+            }
+        }
     }
 
-    if (err != DB_SUCCESS)
-    {
-      mtr_commit(&mtr);
-      ok(0, "insert failed");
-      exit(1);
-    }
-  }
+    /* Remember the table columns already contained in new_index */
+    indexed = static_cast<ibool *>(
+            mem_zalloc(table->n_cols * sizeof *indexed));
 
-  mtr_commit(&mtr);
+    /* Mark the table columns already contained in new_index */
+    for (i = 0; i < new_index->n_def; i++) {
+
+        field = dict_index_get_nth_field(new_index, i);
+
+        /* If there is only a prefix of the column in the index
+        field, do not mark the column as contained in the index */
+
+        if (field->prefix_len == 0) {
+
+            indexed[field->col->ind] = TRUE;
+        }
+    }
+
+    /* Add to new_index non-system columns of table not yet included
+    there */
+    for (i = 0; i + DATA_N_SYS_COLS < (ulint) table->n_cols; i++) {
+
+        dict_col_t *col = dict_table_get_nth_col(table, i);
+        ut_ad(col->mtype != DATA_SYS);
+
+        if (!indexed[col->ind]) {
+            dict_index_add_col(new_index, table, col, 0);
+        }
+    }
+
+    mem_free(indexed);
+
+    ut_ad(dict_index_is_ibuf(index)
+          || (UT_LIST_GET_LEN(table->indexes) == 0));
+
+    new_index->cached = TRUE;
+
+    return (new_index);
 }
 
-int main(int argc __attribute__((unused)), char *argv[])
-{
+void dict_add_sys_cols(dict_table_t *table, mem_heap_t *heap) {
+    dict_mem_table_add_col(table, heap, "DB_ROW_ID", DATA_SYS,
+                           DATA_ROW_ID | DATA_NOT_NULL,
+                           DATA_ROW_ID_LEN);
+    dict_mem_table_add_col(table, heap, "DB_TRX_ID", DATA_SYS,
+                           DATA_TRX_ID | DATA_NOT_NULL,
+                           DATA_TRX_ID_LEN);
+    dict_mem_table_add_col(table, heap, "DB_ROLL_PTR", DATA_SYS,
+                           DATA_ROLL_PTR | DATA_NOT_NULL,
+                           DATA_ROLL_PTR_LEN);
+}
 
-  MY_INIT(argv[0]);
+void test_insert(dict_index_t *index, dict_table_t *table, ulint length) {
+    btr_cur_t cursor;
+    ulint *offsets = NULL;
+    rec_t *rec;
+    ins_node_t *node = NULL;
+    que_thr_t *que_thr = NULL;
+    mtr_t mtr;
+    big_rec_t *big_rec = NULL;
+    mem_heap_t *heap = NULL;
+    byte *mysql_rec = NULL;
+    ulint mysql_row_len = 9;
+    trx_t *user_trx = trx_allocate_for_background();
+    //  ulint value1, value2;
 
-  // count is the number of tests to run in this file
-  plan(3);
+    // generate random numbers
+    ulint seed = 42;
+    std::vector<ulint> entries(length);
 
-  // setup
-  setup();
+    for (ulint i = 1; i <= length; i++) {
+        entries[i] = i;
+    }
 
-  // test1: create tablespace
-  const char *table_name= "test";
-  dict_index_t index;
-  dict_table_t table;
-  test_create_index(&index, &table, (char *) table_name);
+    std::shuffle(entries.begin(), entries.end(),
+                 std::default_random_engine(seed));
 
-  // test: insert operation
-  ulint length= 10;
-  test_insert(&index, &table, length);
+    mtr_start(&mtr);
 
-  destroy();
+    cursor.thr = que_thr;
 
-  // delete the created tablespace file
-  // always run it after destruction
-  delete_tablespace_ibd_file((char *) table_name);
+    for (ulint i = 0; i < length; i++) {
+        // convert values in bytes; this part will be changed
+        //    value1 = entries[i];
+        //    value2 = value1 * 10;
+        mysql_rec = (unsigned char *) "\xf9";
 
-  my_end(0);
-  return exit_status();
+//        ib_table = dict_table_open_on_name(norm_name, FALSE, TRUE, ignore_err);
+//        tdc_acquire_share
+//        prepare_frm_header
+//        pack_header
+//        reclength=uint2korr(forminfo+266);
+//        data_offset= (create_info->null_bits + 7) / 8;
+//        if ((uint) field->offset+ (uint) data_offset+ length > reclength)
+//                  reclength=(uint) (field->offset+ data_offset + length);
+//        reclength=MY_MAX(file->min_record_length(table_options),reclength);
+//        reclength= data_offset;
+//        uint32 pack_length() const { return (uint32) (field_length + 7) / 8; }
+//        create_info->null_bits++;
+
+        trx_start_if_not_started(user_trx);
+        row_prebuilt_t *pre_built = row_create_prebuilt(table, mysql_row_len);
+        pre_built->trx = user_trx;
+        pre_built->mysql_template = (mysql_row_templ_t *)
+                mem_alloc(5 * sizeof(mysql_row_templ_t));
+
+        row_get_prebuilt_insert_row(pre_built);
+        node = pre_built->ins_node;
+        node->index = index;
+
+        row_mysql_convert_row_to_innobase(node->row, pre_built,
+                                          mysql_rec);
+
+        que_thr = que_fork_get_first_thr(pre_built->ins_graph);
+
+        que_thr->run_node = node;
+        que_thr->prev_node = node;
+
+        ut_ad(dtuple_check_typed(node->row));
+
+        row_ins_index_entry_set_vals(node->index, node->entry, node->row);
+
+        ut_ad(dtuple_check_typed(node->entry));
+
+        dberr_t err = btr_cur_search_to_nth_level(
+                index, 0, node->entry, PAGE_CUR_LE, BTR_MODIFY_LEAF, &cursor, 0,
+                __FILE__, __LINE__, &mtr);
+
+        if (err != DB_SUCCESS) {
+            index->table->file_unreadable = true;
+            mtr_commit(&mtr);
+            ok(0, "search failed");
+            exit(1);
+        }
+
+        err = btr_cur_optimistic_insert(0, &cursor, &offsets, &heap, node->entry,
+                                        &rec, &big_rec, 0, que_thr, &mtr);
+
+        if (err == DB_FAIL) {
+            err = btr_cur_pessimistic_insert(0, &cursor, &offsets, &heap, node->entry,
+                                             &rec, &big_rec, 0, que_thr, &mtr);
+        }
+
+        if (err != DB_SUCCESS) {
+            mtr_commit(&mtr);
+            ok(0, "insert failed");
+            exit(1);
+        }
+    }
+
+    mtr_commit(&mtr);
+}
+
+int main(int argc __attribute__((unused)), char *argv[]) {
+
+    MY_INIT(argv[0]);
+
+    // count is the number of tests to run in this file
+    plan(3);
+
+    // setup
+    setup();
+
+    // test1: create tablespace
+    const char *table_name = "test";
+    dict_index_t index;
+    dict_table_t table;
+    test_create_index(&index, &table, (char *) table_name);
+
+    // test: insert operation
+    ulint length = 10;
+    test_insert(&index, &table, length);
+
+    destroy();
+
+    // delete the created tablespace file
+    // always run it after destruction
+    delete_tablespace_ibd_file((char *) table_name);
+
+    my_end(0);
+    return exit_status();
 }
