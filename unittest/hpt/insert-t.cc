@@ -26,7 +26,7 @@ dict_index_t *build_clust_index_def(dict_table_t *table, dict_index_t *index);
 
 void dict_add_sys_cols(dict_table_t *table, mem_heap_t *heap);
 
-void test_create_index(dict_index_t *index, dict_table_t *table,
+void create_table_and_index(dict_index_t *index, dict_table_t *table,
                        char *table_name) {
 
     // create table test (id int, name int);
@@ -53,7 +53,6 @@ void test_create_index(dict_index_t *index, dict_table_t *table,
 
     dict_hdr_get_new_id(&table->id, NULL, NULL);
     UT_LIST_INIT(table->indexes);
-    //  dict_table_add_to_cache(table, FALSE, heap);
 
     mtr_start(&mtr);
 
@@ -72,12 +71,16 @@ void test_create_index(dict_index_t *index, dict_table_t *table,
     *index = *build_clust_index_def(table, index);
 
     index->table = table;
+    index->table_name = table->name;
+    index->search_info = btr_search_info_create(index->heap);
     dict_hdr_get_new_id(NULL, &index->id, NULL);
+    rw_lock_create(index_tree_rw_lock_key, &index->lock,
+                   dict_index_is_ibuf(index)
+                   ? SYNC_IBUF_INDEX_TREE : SYNC_INDEX_TREE);
 
     // create tree
-    root_page_no = btr_create(type, space, zip_size, (index_id_t) &index->id, index, &mtr);
+    root_page_no = btr_create(type, space, zip_size, index->id, index, &mtr);
     index->page = root_page_no;
-    printf("\nroot page number : %lul \n", root_page_no);
 
     page_t *root = btr_root_get(index, &mtr);
     UT_LIST_ADD_LAST(indexes, table->indexes, index);
@@ -258,12 +261,12 @@ void test_insert(dict_index_t *index, dict_table_t *table, ulint length) {
     btr_cur_t cursor;
     ulint *offsets = NULL;
     rec_t *rec;
-    ins_node_t *node = NULL;
     que_thr_t *que_thr = NULL;
     mtr_t mtr;
     big_rec_t *big_rec = NULL;
     mem_heap_t *heap = NULL;
     byte *mysql_rec = NULL;
+    dberr_t err;
     ulint mysql_row_len = 9;
     trx_t *user_trx = trx_allocate_for_background();
     //  ulint value1, value2;
@@ -280,8 +283,6 @@ void test_insert(dict_index_t *index, dict_table_t *table, ulint length) {
                  std::default_random_engine(seed));
 
     mtr_start(&mtr);
-
-    cursor.thr = que_thr;
 
     for (ulint i = 0; i < length; i++) {
         // convert values in bytes; this part will be changed
@@ -309,25 +310,45 @@ void test_insert(dict_index_t *index, dict_table_t *table, ulint length) {
                 mem_alloc(5 * sizeof(mysql_row_templ_t));
 
         row_get_prebuilt_insert_row(pre_built);
-        node = pre_built->ins_node;
-        node->index = index;
+//        node = pre_built->ins_node;
+        pre_built->ins_node->state = INS_NODE_ALLOC_ROW_ID;
 
-        row_mysql_convert_row_to_innobase(node->row, pre_built,
+        row_ins_alloc_row_id_step(pre_built->ins_node);
+
+        pre_built->ins_node->index = dict_table_get_first_index(
+                pre_built->ins_node->table);
+
+        pre_built->ins_node->entry = UT_LIST_GET_FIRST(
+                pre_built->ins_node->entry_list);
+
+        row_mysql_convert_row_to_innobase(pre_built->ins_node->row, pre_built,
                                           mysql_rec);
 
         que_thr = que_fork_get_first_thr(pre_built->ins_graph);
 
-        que_thr->run_node = node;
-        que_thr->prev_node = node;
+        que_thr->run_node = pre_built->ins_node;
+        que_thr->prev_node = pre_built->ins_node;
 
-        ut_ad(dtuple_check_typed(node->row));
+        ut_ad(dtuple_check_typed(pre_built->ins_node->row));
 
-        row_ins_index_entry_set_vals(node->index, node->entry, node->row);
+        row_ins_index_entry_set_vals(pre_built->ins_node->index,
+                                     pre_built->ins_node->entry,
+                                     pre_built->ins_node->row);
 
-        ut_ad(dtuple_check_typed(node->entry));
+        ut_ad(dtuple_check_typed(pre_built->ins_node->entry));
 
-        dberr_t err = btr_cur_search_to_nth_level(
-                index, 0, node->entry, PAGE_CUR_LE, BTR_MODIFY_LEAF, &cursor, 0,
+        cursor.thr = que_thr;
+
+        err = lock_table(0, index->table, LOCK_IX, que_thr);
+        if (err != DB_SUCCESS) {
+            mtr_commit(&mtr);
+            ok(0, "can not lock table");
+            exit(1);
+        }
+
+        err = btr_cur_search_to_nth_level(
+                index, 0, pre_built->ins_node->entry, PAGE_CUR_LE,
+                BTR_MODIFY_LEAF, &cursor, 0,
                 __FILE__, __LINE__, &mtr);
 
         if (err != DB_SUCCESS) {
@@ -337,12 +358,14 @@ void test_insert(dict_index_t *index, dict_table_t *table, ulint length) {
             exit(1);
         }
 
-        err = btr_cur_optimistic_insert(0, &cursor, &offsets, &heap, node->entry,
-                                        &rec, &big_rec, 0, que_thr, &mtr);
+        err = btr_cur_optimistic_insert(0, &cursor, &offsets, &heap,
+                                        pre_built->ins_node->entry, &rec,
+                                        &big_rec, 0, que_thr, &mtr);
 
         if (err == DB_FAIL) {
-            err = btr_cur_pessimistic_insert(0, &cursor, &offsets, &heap, node->entry,
-                                             &rec, &big_rec, 0, que_thr, &mtr);
+            err = btr_cur_pessimistic_insert(0, &cursor, &offsets, &heap,
+                                             pre_built->ins_node->entry, &rec,
+                                             &big_rec, 0, que_thr, &mtr);
         }
 
         if (err != DB_SUCCESS) {
@@ -350,9 +373,12 @@ void test_insert(dict_index_t *index, dict_table_t *table, ulint length) {
             ok(0, "insert failed");
             exit(1);
         }
+
+        trx_commit(user_trx);
     }
 
     mtr_commit(&mtr);
+    ok(err == dberr_t::DB_SUCCESS, "insert successful");
 }
 
 int main(int argc __attribute__((unused)), char *argv[]) {
@@ -369,10 +395,10 @@ int main(int argc __attribute__((unused)), char *argv[]) {
     const char *table_name = "test";
     dict_index_t index;
     dict_table_t table;
-    test_create_index(&index, &table, (char *) table_name);
+    create_table_and_index(&index, &table, (char *) table_name);
 
     // test: insert operation
-    ulint length = 10;
+    ulint length = 100;
     test_insert(&index, &table, length);
 
     destroy();

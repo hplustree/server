@@ -253,6 +253,7 @@ static void load_log_files(void){
 static void init_srv_variables(void){
   // TODO: innodb_encrypt_tables=ON/OFF
 
+//  srv_use_doublewrite_buf=FALSE;
   srv_read_only_mode = FALSE;
   srv_adaptive_flushing = FALSE;
   srv_use_sys_malloc = TRUE;
