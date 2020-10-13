@@ -288,7 +288,7 @@ void test_insert(dict_index_t *index, dict_table_t *table, ulint length) {
         // convert values in bytes; this part will be changed
         //    value1 = entries[i];
         //    value2 = value1 * 10;
-        mysql_rec = (unsigned char *) "f9\x0a\x00\x00\x00\x1f\x00\x00\x00";
+        mysql_rec = (unsigned char *) "\xf9\x0a\x00\x00\x00\x1f\x00\x00\x00";
 
 //        ib_table = dict_table_open_on_name(norm_name, FALSE, TRUE, ignore_err);
 //        tdc_acquire_share
@@ -405,7 +405,7 @@ int main(int argc __attribute__((unused)), char *argv[]) {
 
     // delete the created tablespace file
     // always run it after destruction
-    delete_tablespace_ibd_file((char *) table_name);
+// TODO: uncomment this ->   delete_tablespace_ibd_file((char *) table_name);
 
     my_end(0);
     return exit_status();
