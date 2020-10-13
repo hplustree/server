@@ -12,6 +12,16 @@
 #include "../../storage/xtradb/dict/dict0dict.cc"
 #include <random>
 
+
+// insert into t values (10);
+// data: fd 0a 00 00, len: 5 (1+4)
+
+// insert into test values (10, "kadam"); varchar(20)
+// data: fc 0a 00 00   00 05 6b 61   64 61 6d 00   00 00 00 00   00 00 00 00   00 00 00 00   00 00, len: 26 (1+4+21)
+
+// insert into tii values (10, 31);
+// data: f9 0a 00 00   00 1f 00 00   00, len: 9 (1+4+4)
+
 dict_index_t *build_clust_index_def(dict_table_t *table, dict_index_t *index);
 
 void dict_add_sys_cols(dict_table_t *table, mem_heap_t *heap);
@@ -277,7 +287,7 @@ void test_insert(dict_index_t *index, dict_table_t *table, ulint length) {
         // convert values in bytes; this part will be changed
         //    value1 = entries[i];
         //    value2 = value1 * 10;
-        mysql_rec = (unsigned char *) "\xf9";
+        mysql_rec = (unsigned char *) "f9\x0a\x00\x00\x00\x1f\x00\x00\x00";
 
 //        ib_table = dict_table_open_on_name(norm_name, FALSE, TRUE, ignore_err);
 //        tdc_acquire_share
