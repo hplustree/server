@@ -272,15 +272,15 @@ void test_insert(dict_index_t *index, dict_table_t *table, ulint length) {
     //  ulint value1, value2;
 
     // generate random numbers
-    ulint seed = 42;
-    std::vector<ulint> entries(length);
-
-    for (ulint i = 1; i <= length; i++) {
-        entries[i] = i;
-    }
-
-    std::shuffle(entries.begin(), entries.end(),
-                 std::default_random_engine(seed));
+//    ulint seed = 42;
+//    std::vector<ulint> entries(length);
+//
+//    for (ulint i = 1; i <= length; i++) {
+//        entries[i] = i;
+//    }
+//
+//    std::shuffle(entries.begin(), entries.end(),
+//                 std::default_random_engine(seed));
 
     mtr_start(&mtr);
 
@@ -288,7 +288,7 @@ void test_insert(dict_index_t *index, dict_table_t *table, ulint length) {
         // convert values in bytes; this part will be changed
         //    value1 = entries[i];
         //    value2 = value1 * 10;
-        mysql_rec = (unsigned char *) "\xf9\x0a\x00\x00\x00\x1f\x00\x00\x00";
+        mysql_rec =(unsigned char*) "\x00\x00\x00\x0a\x00\x00\x00\xf9";
 
 //        ib_table = dict_table_open_on_name(norm_name, FALSE, TRUE, ignore_err);
 //        tdc_acquire_share
@@ -306,8 +306,18 @@ void test_insert(dict_index_t *index, dict_table_t *table, ulint length) {
         trx_start_if_not_started(user_trx);
         row_prebuilt_t *pre_built = row_create_prebuilt(table, mysql_row_len);
         pre_built->trx = user_trx;
+
+        pre_built->n_template = 2;
         pre_built->mysql_template = (mysql_row_templ_t *)
                 mem_alloc(5 * sizeof(mysql_row_templ_t));
+        for (ulint j = 0; j < pre_built->n_template; j++) {
+            pre_built->mysql_template[j].mysql_null_bit_mask = 0;
+            pre_built->mysql_template[j].mysql_col_len = 4;
+            pre_built->mysql_template[j].mysql_col_offset = 5;
+        }
+        pre_built->mysql_template->mysql_null_bit_mask = 0;
+        pre_built->mysql_template->mysql_col_len = 4;
+        pre_built->mysql_template->mysql_col_offset = 5;
 
         row_get_prebuilt_insert_row(pre_built);
 //        node = pre_built->ins_node;
