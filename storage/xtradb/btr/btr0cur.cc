@@ -1846,7 +1846,8 @@ btr_cur_pessimistic_insert(
 	if (!(flags & BTR_NO_LOCKING_FLAG)){
 		trx_id = thr_get_trx(thr)->id;
 	} else {
-		trx_id = 0;
+		trx_id = 1;  /* set random int value as these is not going to use
+ 				for these condition due to flag value */
 	}
 
 	if (dict_index_get_page(index)
