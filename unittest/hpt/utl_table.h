@@ -49,13 +49,8 @@ void delete_tablespace_ibd_file(char* table_name){
 
 
 bool create_table(char* table_name, dict_table_t* ret_table, ulint n_cols = 2){
-//  ulint zip_size = 0;
-//  ulint n_fields = 0;
   ulint flags = DICT_TF_COMPACT;
   ulint flags2 = DICT_TF2_USE_TABLESPACE | DICT_TF2_FTS_AUX_HEX_NAME;
-//  const char *index_name = "GEN_CLUST_INDEX";
-//  mtr_t mtr;
-//  ulint root_page_no = FIL_NULL;
 
 
   // Get a new space id.

@@ -17,10 +17,8 @@ void test_create_index(char* table_name)
   bool success = create_table(table_name, &table);
   ok(success, "Tablespace creation");
 
-  mutex_enter(&(dict_sys->mutex));
   success = create_clustered_index_without_primary(&table, &index);
   ok(success, "Index creation");
-
 }
 
 //void test_insert() {

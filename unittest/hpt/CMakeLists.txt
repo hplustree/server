@@ -362,8 +362,6 @@ MY_ADD_TEST(create_tablespace)
 # TODO: separate non-executable i.e. library targets for utility headers
 # dependency of utl_index.h is dict0dict.cc
 
-#ADD_LIBRARY(dict0dict ../../storage/xtradb/dict/dict0dict.cc)
-
 
 ADD_EXECUTABLE(create_index-t create_index-t.cc ../../sql/mf_iocache_encr.cc ../../libmysql/libmysql.c)
 TARGET_LINK_LIBRARIES(create_index-t sql mytap)
