@@ -3,7 +3,7 @@
 //
 
 #include "init_n_des.h"
-#include "tablespace.h"
+#include "utl_table.h"
 #include <dict0boot.h>
 #include <que0que.h>
 #include <trx0trx.h>
@@ -21,6 +21,24 @@
 
 // insert into tii values (10, 31);
 // data: f9 0a 00 00   00 1f 00 00   00, len: 9 (1+4+4)
+
+
+// to calculate size of record in bytes rec_get_converted_size
+// to convert data rec_convert_dtuple_to_rec
+
+
+//table->record[0][0]= share->default_values[0];
+//
+///* Fix undefined null_bits. */
+//if (share->null_bytes > 1 && share->last_null_bit_pos)
+//{
+//table->record[0][share->null_bytes - 1]=
+//share->default_values[share->null_bytes - 1];
+//}
+
+// fill_record()
+
+// see this function to populate data tuple of innodb - row_mysql_store_col_in_innobase_format()
 
 dict_index_t *build_clust_index_def(dict_table_t *table, dict_index_t *index);
 

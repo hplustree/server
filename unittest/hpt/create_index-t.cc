@@ -4,32 +4,22 @@
 
 #include "init_n_des.h"
 #include <dict0boot.h>
-#include "tablespace.h"
-#include "tree_index.h"
+#include "utl_table.h"
+#include "utl_index.h"
 //#include "mysys/charset.c"
 
 
 void test_create_index(char* table_name)
 {
   dict_table_t table;
-  fill_dict_table(table_name, &table);
+  dict_index_t index;
 
-  bool success = create_user_tablespace(&table);
+  bool success = create_table(table_name, &table);
   ok(success, "Tablespace creation");
 
-
-  // must be greater than 3
-  ulint num_fields = 5;
-
-  dict_index_t* index = get_dict_index(table, num_fields);
-
-  success = create_gen_clustered_index(index);
+  mutex_enter(&(dict_sys->mutex));
+  success = create_clustered_index_without_primary(&table, &index);
   ok(success, "Index creation");
-
-//  dict_create_index_tree_step
-//  root_page_no = btr_create(type, table.space, zip_size, index_id, index, &mtr);
-
-//  printf("%ul", table.space);
 
 }
 
