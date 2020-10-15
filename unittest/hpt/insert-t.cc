@@ -3,7 +3,6 @@
 //
 
 #include "init_n_des.h"
-#include "tablespace.h"
 #include <dict0boot.h>
 #include <que0que.h>
 #include <trx0trx.h>
@@ -11,6 +10,7 @@
 #include "../../storage/xtradb/row/row0ins.cc"
 #include "../../storage/xtradb/dict/dict0dict.cc"
 #include <random>
+#include <ctime>
 #include <iostream>
 
 
@@ -28,7 +28,7 @@ dict_index_t *build_clust_index_def(dict_table_t *table, dict_index_t *index);
 void dict_add_sys_cols(dict_table_t *table, mem_heap_t *heap);
 
 void create_table_and_index(dict_index_t *index, dict_table_t *table,
-                       char *table_name) {
+                            char *table_name) {
 
     // create table test (id int, name int);
 
@@ -282,8 +282,6 @@ void test_insert(dict_index_t *index, dict_table_t *table, ulint length) {
     std::shuffle(entries.begin(), entries.end(),
                  std::default_random_engine(seed));
 
-    mtr_start(&mtr);
-
     trx_start_if_not_started(user_trx);
     row_prebuilt_t *pre_built = row_create_prebuilt(table, mysql_row_len);
     pre_built->trx = user_trx;
@@ -292,7 +290,7 @@ void test_insert(dict_index_t *index, dict_table_t *table, ulint length) {
     pre_built->mysql_template = (mysql_row_templ_t *)
             mem_alloc(5 * sizeof(mysql_row_templ_t));
 
-    ulint col_offset[2] = {1,5};
+    ulint col_offset[2] = {1, 5};
     for (ulint j = 0; j < pre_built->n_template; j++) {
         pre_built->mysql_template[j].mysql_null_bit_mask = 0;
         pre_built->mysql_template[j].mysql_col_len = 4;
@@ -302,33 +300,23 @@ void test_insert(dict_index_t *index, dict_table_t *table, ulint length) {
     pre_built->mysql_template->mysql_col_len = 4;
     pre_built->mysql_template->mysql_col_offset = *col_offset;
 
+    std::time_t start_time = time(nullptr);
     for (ulint i = 0; i < length; i++) {
+        mtr_start(&mtr);
 
         // convert values in bytes; this part will be changed
-        ulint data[] = {entries[i], entries[i]*10};
-        ulint data_len = sizeof(data) / sizeof(data[0]);
+        ulint data[] = {entries[i], entries[i] * 10};
         unsigned char arrayOfByte[9];
-        int offs[2] = {0,4};
+        int offs[2] = {0, 4};
+        // header byte
         arrayOfByte[0] = '\xf9';
-        for(ulint k=0;k<data_len;k++) {
+
+        for (ulint k = 0; k < 2; k++) {
             for (ulint l = 0; l < 4; l++)
                 arrayOfByte[l + 1 + offs[k]] = (data[k] >> (l * 8));
         }
         mysql_rec = arrayOfByte;
 //        mysql_rec =(unsigned char*) "\xf9\x01\x00\x00\x00\x02\x00\x00\x00";
-
-//        ib_table = dict_table_open_on_name(norm_name, FALSE, TRUE, ignore_err);
-//        tdc_acquire_share
-//        prepare_frm_header
-//        pack_header
-//        reclength=uint2korr(forminfo+266);
-//        data_offset= (create_info->null_bits + 7) / 8;
-//        if ((uint) field->offset+ (uint) data_offset+ length > reclength)
-//                  reclength=(uint) (field->offset+ data_offset + length);
-//        reclength=MY_MAX(file->min_record_length(table_options),reclength);
-//        reclength= data_offset;
-//        uint32 pack_length() const { return (uint32) (field_length + 7) / 8; }
-//        create_info->null_bits++;
 
         row_get_prebuilt_insert_row(pre_built);
 
@@ -384,9 +372,27 @@ void test_insert(dict_index_t *index, dict_table_t *table, ulint length) {
                                         &big_rec, 0, que_thr, &mtr);
 
         if (err == DB_FAIL) {
-            err = btr_cur_pessimistic_insert(0, &cursor, &offsets, &heap,
-                                             pre_built->ins_node->entry, &rec,
-                                             &big_rec, 0, que_thr, &mtr);
+            err = btr_cur_search_to_nth_level(
+                    index, 0, pre_built->ins_node->entry, PAGE_CUR_LE,
+                    BTR_MODIFY_TREE, &cursor, 0,
+                    __FILE__, __LINE__, &mtr);
+
+            if (err != DB_SUCCESS) {
+                index->table->file_unreadable = true;
+                mtr_commit(&mtr);
+                ok(0, "second search failed");
+                exit(1);
+            }
+
+            err = btr_cur_optimistic_insert(0, &cursor, &offsets, &heap,
+                                            pre_built->ins_node->entry, &rec,
+                                            &big_rec, 0, que_thr, &mtr);
+
+            if (err == DB_FAIL) {
+                err = btr_cur_pessimistic_insert(0, &cursor, &offsets, &heap,
+                                                 pre_built->ins_node->entry, &rec,
+                                                 &big_rec, 0, que_thr, &mtr);
+            }
         }
 
         if (err != DB_SUCCESS) {
@@ -396,10 +402,14 @@ void test_insert(dict_index_t *index, dict_table_t *table, ulint length) {
         }
 
         ut_memcpy(pre_built->row_id, pre_built->ins_node->row_id_buf, DATA_ROW_ID_LEN);
+        mtr_commit(&mtr);
     }
 
+    std::cout << "\ntime taken for insertion: " << (time(nullptr) - start_time) / 60 << " m "
+              << (time(nullptr) - start_time) % 60 << " s\n";
+
     trx_commit(user_trx);
-    mtr_commit(&mtr);
+
     ok(err == dberr_t::DB_SUCCESS, "insert successful");
 }
 
@@ -420,7 +430,7 @@ int main(int argc __attribute__((unused)), char *argv[]) {
     create_table_and_index(&index, &table, (char *) table_name);
 
     // test: insert operation
-    ulint length = 100;
+    ulint length = 10000;
     test_insert(&index, &table, length);
 
     destroy();
