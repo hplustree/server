@@ -11,13 +11,13 @@
 
 void test_create_index(char* table_name)
 {
-  dict_table_t table;
-  dict_index_t index;
+  dict_table_t *table = nullptr;
+  dict_index_t *index= nullptr;
 
   bool success = create_table(table_name, &table);
   ok(success, "Tablespace creation");
 
-  success = create_clustered_index_without_primary(&table, &index);
+  success = create_clustered_index_without_primary(table, &index);
   ok(success, "Index creation");
 }
 

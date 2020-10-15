@@ -48,7 +48,7 @@ void delete_tablespace_ibd_file(char* table_name){
 }
 
 
-bool create_table(char* table_name, dict_table_t* ret_table, ulint n_cols = 2){
+bool create_table(char* table_name, dict_table_t** ret_table, ulint n_cols = 2){
   ulint flags = DICT_TF_COMPACT;
   ulint flags2 = DICT_TF2_USE_TABLESPACE | DICT_TF2_FTS_AUX_HEX_NAME;
 
@@ -58,7 +58,7 @@ bool create_table(char* table_name, dict_table_t* ret_table, ulint n_cols = 2){
   dict_hdr_get_new_id(nullptr, nullptr, &space_id);
 
   // create table object
-  *ret_table = *dict_mem_table_create(table_name, space_id, n_cols, flags, flags2);
+  *ret_table = dict_mem_table_create(table_name, space_id, n_cols, flags, flags2);
 
   char col_name[10];
   /** refer data0type.h */
@@ -70,19 +70,19 @@ bool create_table(char* table_name, dict_table_t* ret_table, ulint n_cols = 2){
 
   for (unsigned int i=0; i<n_cols; ++i){
     snprintf(col_name, sizeof(col_name), "col_%u", i);
-    dict_mem_table_add_col(ret_table, heap, col_name, type, prtype, data_len);
+    dict_mem_table_add_col(*ret_table, heap, col_name, type, prtype, data_len);
   }
 
-  dict_table_add_system_columns(ret_table, heap);
+  dict_table_add_system_columns(*ret_table, heap);
 
   mem_heap_free(heap);
 
   // Get a new table id.
-  dict_hdr_get_new_id(&ret_table->id, NULL, NULL);
+  dict_hdr_get_new_id(&(*ret_table)->id, NULL, NULL);
 
-  UT_LIST_INIT(ret_table->indexes);
+  UT_LIST_INIT((*ret_table)->indexes);
 
-  return create_user_tablespace(ret_table);
+  return create_user_tablespace(*ret_table);
 }
 
 #endif // MYSQL_UTL_TABLE_H

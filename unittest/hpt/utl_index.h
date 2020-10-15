@@ -208,38 +208,38 @@ bool create_tree(dict_index_t* index, page_t** ret_root){
 }
 
 bool create_clustered_index_without_primary(
-    dict_table_t* table, dict_index_t* ret_index){
+    dict_table_t* table, dict_index_t** ret_index){
   const char innobase_index_reserve_name[] = "GEN_CLUST_INDEX";
 
 
   // create index object
-  *ret_index = *dict_mem_index_create(table->name,
+  *ret_index = dict_mem_index_create(table->name,
                                      innobase_index_reserve_name,
                                      table->space,
                                      DICT_CLUSTERED,
                                      0);
 
   // Get a new index id.
-  dict_hdr_get_new_id(NULL, &ret_index->id, NULL);
+  dict_hdr_get_new_id(NULL, &(*ret_index)->id, NULL);
 
-  *ret_index = *dict_index_build_clust(table, ret_index);
+  *ret_index = dict_index_build_clust(table, *ret_index);
 
-  ret_index->n_fields = ret_index->n_def;
-  ret_index->table = table;
-  ret_index->table_name = table->name;
-  rw_lock_create(index_tree_rw_lock_key, &ret_index->lock, SYNC_INDEX_TREE);
-  UT_LIST_ADD_LAST(indexes, table->indexes, ret_index);
-  ret_index->search_info = btr_search_info_create(ret_index->heap);
+  (*ret_index)->n_fields = (*ret_index)->n_def;
+  (*ret_index)->table = table;
+  (*ret_index)->table_name = table->name;
+  rw_lock_create(index_tree_rw_lock_key, &(*ret_index)->lock, SYNC_INDEX_TREE);
+  UT_LIST_ADD_LAST(indexes, table->indexes, *ret_index);
+  (*ret_index)->search_info = btr_search_info_create((*ret_index)->heap);
 
 
   // create tree
   page_t* root;
-  if (!create_tree(ret_index, &root)){
+  if (!create_tree(*ret_index, &root)){
     return false;
   }
 
 
-  return (mach_read_from_4(root + FIL_PAGE_OFFSET) == ret_index->page);
+  return (mach_read_from_4(root + FIL_PAGE_OFFSET) == (*ret_index)->page);
 }
 
 
