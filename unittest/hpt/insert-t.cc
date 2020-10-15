@@ -11,6 +11,7 @@
 #include "../../storage/xtradb/row/row0ins.cc"
 #include "../../storage/xtradb/dict/dict0dict.cc"
 #include <random>
+#include <iostream>
 
 
 // insert into t values (10);
@@ -269,26 +270,52 @@ void test_insert(dict_index_t *index, dict_table_t *table, ulint length) {
     dberr_t err;
     ulint mysql_row_len = 9;
     trx_t *user_trx = trx_allocate_for_background();
-    //  ulint value1, value2;
 
     // generate random numbers
-//    ulint seed = 42;
-//    std::vector<ulint> entries(length);
-//
-//    for (ulint i = 1; i <= length; i++) {
-//        entries[i] = i;
-//    }
-//
-//    std::shuffle(entries.begin(), entries.end(),
-//                 std::default_random_engine(seed));
+    ulint seed = 42;
+    std::vector<ulint> entries(length);
+
+    for (ulint i = 1; i <= length; i++) {
+        entries[i] = i;
+    }
+
+    std::shuffle(entries.begin(), entries.end(),
+                 std::default_random_engine(seed));
 
     mtr_start(&mtr);
 
+    trx_start_if_not_started(user_trx);
+    row_prebuilt_t *pre_built = row_create_prebuilt(table, mysql_row_len);
+    pre_built->trx = user_trx;
+
+    pre_built->n_template = 2;
+    pre_built->mysql_template = (mysql_row_templ_t *)
+            mem_alloc(5 * sizeof(mysql_row_templ_t));
+
+    ulint col_offset[2] = {1,5};
+    for (ulint j = 0; j < pre_built->n_template; j++) {
+        pre_built->mysql_template[j].mysql_null_bit_mask = 0;
+        pre_built->mysql_template[j].mysql_col_len = 4;
+        pre_built->mysql_template[j].mysql_col_offset = col_offset[j];
+    }
+    pre_built->mysql_template->mysql_null_bit_mask = 0;
+    pre_built->mysql_template->mysql_col_len = 4;
+    pre_built->mysql_template->mysql_col_offset = *col_offset;
+
     for (ulint i = 0; i < length; i++) {
+
         // convert values in bytes; this part will be changed
-        //    value1 = entries[i];
-        //    value2 = value1 * 10;
-        mysql_rec =(unsigned char*) "\x00\x00\x00\x0a\x00\x00\x00\xf9";
+        ulint data[] = {entries[i], entries[i]*10};
+        ulint data_len = sizeof(data) / sizeof(data[0]);
+        unsigned char arrayOfByte[9];
+        int offs[2] = {0,4};
+        arrayOfByte[0] = '\xf9';
+        for(ulint k=0;k<data_len;k++) {
+            for (ulint l = 0; l < 4; l++)
+                arrayOfByte[l + 1 + offs[k]] = (data[k] >> (l * 8));
+        }
+        mysql_rec = arrayOfByte;
+//        mysql_rec =(unsigned char*) "\xf9\x01\x00\x00\x00\x02\x00\x00\x00";
 
 //        ib_table = dict_table_open_on_name(norm_name, FALSE, TRUE, ignore_err);
 //        tdc_acquire_share
@@ -303,24 +330,8 @@ void test_insert(dict_index_t *index, dict_table_t *table, ulint length) {
 //        uint32 pack_length() const { return (uint32) (field_length + 7) / 8; }
 //        create_info->null_bits++;
 
-        trx_start_if_not_started(user_trx);
-        row_prebuilt_t *pre_built = row_create_prebuilt(table, mysql_row_len);
-        pre_built->trx = user_trx;
-
-        pre_built->n_template = 2;
-        pre_built->mysql_template = (mysql_row_templ_t *)
-                mem_alloc(5 * sizeof(mysql_row_templ_t));
-        for (ulint j = 0; j < pre_built->n_template; j++) {
-            pre_built->mysql_template[j].mysql_null_bit_mask = 0;
-            pre_built->mysql_template[j].mysql_col_len = 4;
-            pre_built->mysql_template[j].mysql_col_offset = 5;
-        }
-        pre_built->mysql_template->mysql_null_bit_mask = 0;
-        pre_built->mysql_template->mysql_col_len = 4;
-        pre_built->mysql_template->mysql_col_offset = 5;
-
         row_get_prebuilt_insert_row(pre_built);
-//        node = pre_built->ins_node;
+
         pre_built->ins_node->state = INS_NODE_ALLOC_ROW_ID;
 
         row_ins_alloc_row_id_step(pre_built->ins_node);
@@ -384,9 +395,10 @@ void test_insert(dict_index_t *index, dict_table_t *table, ulint length) {
             exit(1);
         }
 
-        trx_commit(user_trx);
+        ut_memcpy(pre_built->row_id, pre_built->ins_node->row_id_buf, DATA_ROW_ID_LEN);
     }
 
+    trx_commit(user_trx);
     mtr_commit(&mtr);
     ok(err == dberr_t::DB_SUCCESS, "insert successful");
 }
