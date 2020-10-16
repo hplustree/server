@@ -277,7 +277,9 @@ void dict_add_sys_cols(dict_table_t *table, mem_heap_t *heap) {
                            DATA_ROLL_PTR_LEN);
 }
 
-void test_insert(dict_index_t *index, dict_table_t *table, ulint length) {
+row_prebuilt_t* test_insert(dict_index_t *index, dict_table_t *table,
+                            std::vector<ulint> entries) {
+
     btr_cur_t cursor;
     ulint *offsets = NULL;
     rec_t *rec;
@@ -290,18 +292,6 @@ void test_insert(dict_index_t *index, dict_table_t *table, ulint length) {
     ulint mysql_row_len = 9;
     trx_t *user_trx = trx_allocate_for_background();
 
-    // generate random numbers
-    ulint seed = 42;
-    std::vector<ulint> entries(length);
-
-    for (ulint i = 1; i <= length; i++) {
-        entries[i] = i;
-    }
-
-    std::shuffle(entries.begin(), entries.end(),
-                 std::default_random_engine(seed));
-
-    trx_start_if_not_started(user_trx);
     row_prebuilt_t *pre_built = row_create_prebuilt(table, mysql_row_len);
     pre_built->trx = user_trx;
 
@@ -320,10 +310,16 @@ void test_insert(dict_index_t *index, dict_table_t *table, ulint length) {
     pre_built->mysql_template->mysql_col_offset = *col_offset;
 
     std::time_t start_time = time(nullptr);
-    for (ulint i = 0; i < length; i++) {
+    ulint data_len = entries.size();
+
+    for (ulint i = 0; i < data_len; i++) {
+
+        trx_start_if_not_started_xa(pre_built->trx);
+        pre_built->trx->state = TRX_STATE_ACTIVE;
+
         mtr_start(&mtr);
 
-        // convert values in bytes; this part will be changed
+        // convert values in bytes
         ulint data[] = {entries[i], entries[i] * 10};
         unsigned char arrayOfByte[9];
         int offs[2] = {0, 4};
@@ -370,6 +366,7 @@ void test_insert(dict_index_t *index, dict_table_t *table, ulint length) {
         err = lock_table(0, index->table, LOCK_IX, que_thr);
         if (err != DB_SUCCESS) {
             mtr_commit(&mtr);
+            trx_commit_for_mysql(pre_built->trx);
             ok(0, "can not lock table");
             exit(1);
         }
@@ -382,6 +379,7 @@ void test_insert(dict_index_t *index, dict_table_t *table, ulint length) {
         if (err != DB_SUCCESS) {
             index->table->file_unreadable = true;
             mtr_commit(&mtr);
+            trx_commit_for_mysql(pre_built->trx);
             ok(0, "search failed");
             exit(1);
         }
@@ -399,6 +397,7 @@ void test_insert(dict_index_t *index, dict_table_t *table, ulint length) {
             if (err != DB_SUCCESS) {
                 index->table->file_unreadable = true;
                 mtr_commit(&mtr);
+                trx_commit_for_mysql(pre_built->trx);
                 ok(0, "second search failed");
                 exit(1);
             }
@@ -416,20 +415,83 @@ void test_insert(dict_index_t *index, dict_table_t *table, ulint length) {
 
         if (err != DB_SUCCESS) {
             mtr_commit(&mtr);
+            trx_commit_for_mysql(pre_built->trx);
             ok(0, "insert failed");
             exit(1);
         }
 
         ut_memcpy(pre_built->row_id, pre_built->ins_node->row_id_buf, DATA_ROW_ID_LEN);
         mtr_commit(&mtr);
+        trx_commit_for_mysql(pre_built->trx);
     }
 
     std::cout << "\ntime taken for insertion: " << (time(nullptr) - start_time) / 60 << " m "
               << (time(nullptr) - start_time) % 60 << " s\n";
 
-    trx_commit(user_trx);
-
     ok(err == dberr_t::DB_SUCCESS, "insert successful");
+    return pre_built;
+}
+
+std::vector<ulint> prepare_data(ulint length) {
+    // generate random numbers
+    ulint seed = 42;
+    std::vector<ulint> entries(length);
+
+    for (ulint i = 0; i < length; i++) {
+        entries[i] = i;
+    }
+
+    std::shuffle(entries.begin(), entries.end(),
+                 std::default_random_engine(seed));
+
+    return entries;
+}
+
+void test_search(row_prebuilt_t* pre_built, std::vector<ulint> entries) {
+
+//    ulint key;
+//    ulint find_flag = HA_READ_AFTER_KEY;
+//    ulint data_len = entries.size();
+    trx_t *user_trx = trx_allocate_for_background();
+
+    trx_start_if_not_started_xa(user_trx);
+    pre_built->trx = user_trx;
+
+    dict_index_t* index = pre_built->index;
+
+    if (UNIV_UNLIKELY(index == NULL) || dict_index_is_corrupted(index)) {
+        pre_built->index_usable = FALSE;
+        ok(0, "HA_ERR_CRASHED");
+        exit(1);
+    }
+
+    if (UNIV_UNLIKELY(!pre_built->index_usable)) {
+        ok(0, "HA_ERR_TABLE_DEF_CHANGED or HA_ERR_INDEX_CORRUPT");
+        exit(1);
+    }
+
+    if (index->type & DICT_FTS) {
+        ok(0, "HA_ERR_KEY_NOT_FOUND");
+    }
+
+    pre_built->need_to_access_clustered = 1;
+
+    for(ulint j=0;j<pre_built->n_template;j++) {
+        mysql_row_templ_t* templ = pre_built->mysql_template + j;
+        if (pre_built->mysql_prefix_len < templ->mysql_col_offset
+                                          + templ->mysql_col_len) {
+            pre_built->mysql_prefix_len = templ->mysql_col_offset
+                                          + templ->mysql_col_len;
+        }
+    }
+
+    dtuple_set_n_fields(pre_built->search_tuple, 0);
+
+//    for (ulint i=0;i<data_len;i++) {
+//        key = entries[i];
+//    }
+
+
 }
 
 int main(int argc __attribute__((unused)), char *argv[]) {
@@ -449,8 +511,11 @@ int main(int argc __attribute__((unused)), char *argv[]) {
     create_table_and_index(&index, &table, (char *) table_name);
 
     // test: insert operation
-    ulint length = 10000;
-    test_insert(&index, &table, length);
+    ulint length = 1000000;
+    std::vector<ulint> entries = prepare_data(length);
+    test_insert(&index, &table, entries);
+
+//    test_search(pre_built, entries);
 
     destroy();
 
