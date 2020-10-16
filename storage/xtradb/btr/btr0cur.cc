@@ -3682,7 +3682,6 @@ btr_cur_pessimistic_delete(
 	ibool		ret		= FALSE;
 	mem_heap_t*	heap;
 	ulint*		offsets;
-	ibool 		p;
 
 	block = btr_cur_get_block(cursor);
 	page = buf_block_get_frame(block);
