@@ -1,3 +1,11 @@
+# custom (kadam's) list
+.idea/
+maria-extra/
+myconfig.cnf
+storage/connect/JdbcInterface.jar
+storage/maria/unittest/TMP-ma_test_loghandler_max_lsn/
+
+# official list below
 *-t
 *.ctest
 *.reject

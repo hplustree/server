@@ -1,0 +1,4 @@
+*.ibd
+undo*
+ib_logfile*
+ibdata*
