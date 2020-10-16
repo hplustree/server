@@ -1970,14 +1970,17 @@ btr_free_but_not_root(
 //	mtr_s_lock(dict_index_get_lock(index), &mtr);
 
 	height = btr_page_get_level(root, mtr);
+	mtr_commit(&mtr);
+
 	if (height == 0) {
-		mtr_commit(&mtr);
 		return;
 	}
 
 	for (ulint i = 0; i < height; i++) {
+
+		mtr_start(&mtr);
 		btr_cur_open_at_index_side(true, index, BTR_MODIFY_TREE,
-					   &cursor, 1, &mtr);
+					   &cursor, i+1, &mtr);
 		block = page_cur_get_block(btr_cur_get_page_cur(&cursor));
 
 		page = buf_block_get_frame(block);
@@ -1997,12 +2000,12 @@ btr_free_but_not_root(
 		next_page = btr_page_get_next(page, &mtr);
 		if (next_page != FIL_NULL && root_page_no != buf_block_get_page_no(block)) {
 			page = buf_block_get_frame(buf_page_get(
-			    space, zip_size, next_page, RW_NO_LATCH, &mtr));
+			    space, zip_size, next_page, RW_X_LATCH, &mtr));
 			goto loop;
 		}
+		mtr_commit(&mtr);
 	}
 
-	mtr_commit(&mtr);
 //	root = btr_page_get(space, zip_size, root_page_no, RW_X_LATCH,
 //			    NULL, &mtr);
 //

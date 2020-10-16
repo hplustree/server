@@ -2806,8 +2806,6 @@ fseg_alloc_free_page_low(
 		/* 1. We can take the hinted page
 		=================================*/
 		page_t*	hint_page;
-		ulint 	prev_page_no;
-		ulint 	next_page_no;
 		ulint 	first_page;
 
 		ret_descr = descr;
@@ -2822,10 +2820,11 @@ fseg_alloc_free_page_low(
 		hint_page = buf_block_get_frame(block);
 
 		if ((first_page = mach_read_from_4(seg_inode + FSEG_FRAG_PAGE_FIRST)) != FIL_NULL) {
-
 			if ((first_page == hint) ||
-			    (prev_page_no = mach_read_from_4(hint_page + FIL_PAGE_PREV) != FIL_NULL) ||
-			    (next_page_no = mach_read_from_4(hint_page + FIL_PAGE_NEXT) != FIL_NULL)) {
+			    ((mach_read_from_4(hint_page + FIL_PAGE_PREV) != FIL_NULL) &&
+				(mach_read_from_4(hint_page + FIL_PAGE_PREV))) ||
+			    ((mach_read_from_4(hint_page + FIL_PAGE_NEXT) != FIL_NULL) &&
+				(mach_read_from_4(hint_page + FIL_PAGE_NEXT)))) {
 
 				/* hint page is in fragment pages list; remove
 				   hint page from the list and use it*/
