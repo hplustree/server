@@ -6,19 +6,31 @@
 #include <dict0boot.h>
 #include "utl_table.h"
 #include "utl_index.h"
+#include "utl_data.h"
 //#include "mysys/charset.c"
 
 
-void test_create_index(char* table_name)
+void test_hpt(char* table_name)
 {
   dict_table_t *table = nullptr;
   dict_index_t *index= nullptr;
+  mem_heap_t* data_heap = nullptr;
+  dtuple_t* data_tuple = nullptr;
+
 
   bool success = create_table(table_name, &table);
   ok(success, "Tablespace creation");
 
   success = create_clustered_index_without_primary(table, &index);
   ok(success, "Index creation");
+
+  // as the data tuple is a dynamic length variable, we use a heap to store it
+  data_heap = mem_heap_create(sizeof(dtuple_t)
+                                          + 2 * (sizeof(dfield_t)
+                                                 + sizeof(que_fork_t)
+                                                 + sizeof(upd_node_t)
+                                                 + sizeof(upd_t) + 12));
+  create_data_tuple(index, data_heap, &data_tuple);
 }
 
 //void test_insert() {
@@ -40,7 +52,7 @@ int main(int argc __attribute__((unused)),char *argv[])
   const char *table_name = "test";
 
   // test1: create tablespace
-  test_create_index((char* )table_name);
+  test_hpt((char* )table_name);
 
   destroy();
 

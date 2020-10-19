@@ -613,6 +613,7 @@ my_bool setup(){
     srv_n_write_io_threads = 4;
   }
   srv_max_buf_pool_modified_pct = (double)max_buf_pool_modified_pct;
+  srv_max_dirty_pages_pct_lwm = srv_max_buf_pool_modified_pct;
 
   if (!innodb_init()){
     return FALSE;
