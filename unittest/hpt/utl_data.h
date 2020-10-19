@@ -15,6 +15,7 @@
 #include <my_config.h>
 
 void write_int_at(unsigned char* mem_loc, ulint integer, bool is_signed=true){
+  // because SIZEOF_INT is 4, change as needed
   mach_write_to_4(mem_loc, integer);
 
   // set the MSB in case of signed integer
@@ -54,6 +55,7 @@ void dtuple_add_sys_cols(mem_heap_t* heap, dtuple_t* ret_data_tuple){
   dfield = dtuple_get_nth_field(ret_data_tuple, DATA_ROLL_PTR);
   dfield_set_data(dfield, mem_ptr, DATA_ROLL_PTR_LEN);
 
+  // TODO: resolve the dependency of roll_ptr with trx if any
   roll_ptr_t roll_ptr = 0;
   trx_write_roll_ptr(mem_ptr, roll_ptr);
 
