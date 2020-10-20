@@ -37,6 +37,22 @@ void test_hpt(char* table_name)
   //  and the transaction used in fields
   //  modify code accordingly
 
+
+  // fork = que_fork_create(NULL, NULL, QUE_FORK_MYSQL_INTERFACE, heap);
+  // populate threads in insert graph using que_thr_create()
+
+
+//  thr = que_fork_get_first_thr(prebuilt->ins_graph);
+//
+//  if (prebuilt->sql_stat_start) {
+//    node->state = INS_NODE_SET_IX_LOCK;
+//    prebuilt->sql_stat_start = FALSE;
+//  } else {
+//    node->state = INS_NODE_ALLOC_ROW_ID;
+//  }
+//
+//  que_thr_move_to_run_state_for_mysql(thr, trx);
+
   ulint err;
   btr_cur_t cursor;
   mtr_t mtr;
@@ -73,6 +89,8 @@ void test_hpt(char* table_name)
   // TODO: free the data_heap as and when needed
   //  delete it at last
   //  refer: mem_heap_free and mem_heap_empty
+
+  // at the end, stop the thread que_thr_stop_for_mysql(thr);
 }
 
 //void test_insert() {

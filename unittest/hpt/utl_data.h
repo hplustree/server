@@ -46,6 +46,11 @@ void dtuple_add_sys_cols(mem_heap_t* heap, dtuple_t* ret_data_tuple){
   dfield_set_data(dfield, mem_ptr, DATA_TRX_ID_LEN);
 
   // TODO: transaction might be needed outside in order to commit
+  // have a look at row_ins_step
+  // trx = thr_get_trx(thr);
+  // trx_start_if_not_started_xa(trx);
+  // and the line which says. node->trx_id = trx->id;
+  // where node->trx_id points to mem_ptr here (observed by kadam)
   trx_t* trx = trx_allocate_for_background();
   trx_write_trx_id(mem_ptr, trx->id);
 
