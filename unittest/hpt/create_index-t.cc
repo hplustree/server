@@ -6,19 +6,91 @@
 #include <dict0boot.h>
 #include "utl_table.h"
 #include "utl_index.h"
+#include "utl_data.h"
 //#include "mysys/charset.c"
 
 
-void test_create_index(char* table_name)
+void test_hpt(char* table_name)
 {
   dict_table_t *table = nullptr;
   dict_index_t *index= nullptr;
+  mem_heap_t* data_heap = nullptr;
+  dtuple_t* data_tuple = nullptr;
+
 
   bool success = create_table(table_name, &table);
   ok(success, "Tablespace creation");
 
   success = create_clustered_index_without_primary(table, &index);
   ok(success, "Index creation");
+
+  // as the data tuple is a dynamic length variable, we use a heap to store it
+  data_heap = mem_heap_create(sizeof(dtuple_t)
+                                          + 2 * (sizeof(dfield_t)
+                                                 + sizeof(que_fork_t)
+                                                 + sizeof(upd_node_t)
+                                                 + sizeof(upd_t) + 12));
+  create_data_tuple(index, data_heap, &data_tuple);
+
+  // TODO: index insertion needs thread as well as it's transaction
+  //  hence, find out the relation between thi thread's transaction
+  //  and the transaction used in fields
+  //  modify code accordingly
+
+
+  // fork = que_fork_create(NULL, NULL, QUE_FORK_MYSQL_INTERFACE, heap);
+  // populate threads in insert graph using que_thr_create()
+
+
+//  thr = que_fork_get_first_thr(prebuilt->ins_graph);
+//
+//  if (prebuilt->sql_stat_start) {
+//    node->state = INS_NODE_SET_IX_LOCK;
+//    prebuilt->sql_stat_start = FALSE;
+//  } else {
+//    node->state = INS_NODE_ALLOC_ROW_ID;
+//  }
+//
+//  que_thr_move_to_run_state_for_mysql(thr, trx);
+
+  ulint err;
+  btr_cur_t cursor;
+  mtr_t mtr;
+  ulint *offsets = NULL;
+  mem_heap_t *heap = NULL;
+  rec_t *rec;
+  que_thr_t *que_thr = NULL;
+  big_rec_t *big_rec = NULL;
+
+  mtr_start(&mtr);
+  err = btr_cur_search_to_nth_level(
+      index, 0, data_tuple, PAGE_CUR_LE,
+      BTR_MODIFY_LEAF, &cursor, 0,
+      __FILE__, __LINE__, &mtr);
+
+  if (err != DB_SUCCESS) {
+    index->table->file_unreadable = true;
+    mtr_commit(&mtr);
+    ok(0, "search failed");
+    exit(1);
+  }
+
+  err = btr_cur_optimistic_insert(0, &cursor, &offsets, &heap,
+                                  data_tuple, &rec,
+                                  &big_rec, 0, que_thr, &mtr);
+
+  if (err != DB_SUCCESS) {
+    index->table->file_unreadable = true;
+    mtr_commit(&mtr);
+    ok(0, "search failed");
+    exit(1);
+  }
+
+  // TODO: free the data_heap as and when needed
+  //  delete it at last
+  //  refer: mem_heap_free and mem_heap_empty
+
+  // at the end, stop the thread que_thr_stop_for_mysql(thr);
 }
 
 //void test_insert() {
@@ -40,7 +112,7 @@ int main(int argc __attribute__((unused)),char *argv[])
   const char *table_name = "test";
 
   // test1: create tablespace
-  test_create_index((char* )table_name);
+  test_hpt((char* )table_name);
 
   destroy();
 

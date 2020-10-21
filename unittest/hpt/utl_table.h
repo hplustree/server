@@ -47,6 +47,26 @@ void delete_tablespace_ibd_file(char* table_name){
   remove(file_name);
 }
 
+void add_columns(dict_table_t *table, ulint n_cols){
+  // TODO: only support DATA_INT type as of now
+  char col_name[10];
+  /** refer data0type.h */
+  ulint prtype = 0; // no restrictions on column
+  ulint type = DATA_INT; // set column datatype as integer
+  ulint data_len = 4; // 4 bytes integer
+
+  mem_heap_t *heap = mem_heap_create(450);
+
+  for (unsigned int i=0; i<n_cols; ++i){
+    snprintf(col_name, sizeof(col_name), "col_%u", i);
+    dict_mem_table_add_col(table, heap, col_name, type, prtype, data_len);
+  }
+
+  dict_table_add_system_columns(table, heap);
+
+  mem_heap_free(heap);
+}
+
 
 bool create_table(char* table_name, dict_table_t** ret_table, ulint n_cols = 2){
   ulint flags = DICT_TF_COMPACT;
@@ -60,22 +80,10 @@ bool create_table(char* table_name, dict_table_t** ret_table, ulint n_cols = 2){
   // create table object
   *ret_table = dict_mem_table_create(table_name, space_id, n_cols, flags, flags2);
 
-  char col_name[10];
-  /** refer data0type.h */
-  ulint prtype = 0; // no restrictions on column
-  ulint type = DATA_INT; // set column datatype as integer
-  ulint data_len = 4; // 4 bytes integer
+  add_columns(*ret_table, n_cols);
 
-  mem_heap_t *heap = mem_heap_create(450);
-
-  for (unsigned int i=0; i<n_cols; ++i){
-    snprintf(col_name, sizeof(col_name), "col_%u", i);
-    dict_mem_table_add_col(*ret_table, heap, col_name, type, prtype, data_len);
-  }
-
-  dict_table_add_system_columns(*ret_table, heap);
-
-  mem_heap_free(heap);
+  // TODO: the proper way to do this is to acquire mutex, add table to cache,
+  //  and release the mutex
 
   // Get a new table id.
   dict_hdr_get_new_id(&(*ret_table)->id, NULL, NULL);

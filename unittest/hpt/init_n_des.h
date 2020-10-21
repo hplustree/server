@@ -59,7 +59,7 @@ long innobase_file_io_threads = 4;
 long innobase_read_io_threads = 4;
 long innobase_write_io_threads = 4;
 long innobase_force_recovery = 0;
-long innobase_log_buffer_size = 1024*1024L;
+long innobase_log_buffer_size = 1024L;
 long innobase_log_files_in_group = 2;
 long innobase_open_files = 300L;
 
@@ -269,7 +269,7 @@ static void init_srv_variables(void){
   printf("InnoDB: innodb_log_file_size = %lld\n",
          (long long int) srv_log_file_size);
 
-  srv_log_buffer_size = (ulint) innobase_log_buffer_size;
+  srv_log_buffer_size = (ulint) innobase_log_buffer_size*srv_page_size;
 
   /* We set srv_pool_size here in units of 1 kB. InnoDB internally
   changes the value so that it becomes the number of database pages. */
@@ -613,6 +613,7 @@ my_bool setup(){
     srv_n_write_io_threads = 4;
   }
   srv_max_buf_pool_modified_pct = (double)max_buf_pool_modified_pct;
+  srv_max_dirty_pages_pct_lwm = srv_max_buf_pool_modified_pct;
 
   if (!innodb_init()){
     return FALSE;
