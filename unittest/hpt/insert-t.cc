@@ -10,7 +10,6 @@
 #include "utl_index.h"
 #include "../../storage/xtradb/row/row0mysql.cc"
 #include "../../storage/xtradb/row/row0ins.cc"
-//#include "../../storage/xtradb/dict/dict0dict.cc"
 #include "../../storage/xtradb/row/row0sel.cc"
 #include <random>
 #include <ctime>
@@ -1756,6 +1755,8 @@ int main(int argc __attribute__((unused)), char *argv[]) {
     pre_built->index_usable = TRUE;
 
     test_search(pre_built, entries);
+
+   
 
     destroy();
 

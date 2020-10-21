@@ -239,8 +239,13 @@ btr_pcur_is_after_last_in_tree(
 	ut_ad(cursor->pos_state == BTR_PCUR_IS_POSITIONED);
 	ut_ad(cursor->latch_mode != BTR_NO_LATCHES);
 
-	if (btr_page_get_next(btr_pcur_get_page(cursor), mtr) != FIL_NULL) {
+	page_t *page = btr_pcur_get_page(cursor);
+	ulint	page_no = page_get_page_no(page);
+	ulint	root_page_no = dict_index_get_page(
+	      btr_cur_get_index(btr_pcur_get_btr_cur(cursor)));
 
+	if (btr_page_get_next(page, mtr) != FIL_NULL &&
+	    page_no != root_page_no) {
 		return(FALSE);
 	}
 

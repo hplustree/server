@@ -1175,10 +1175,15 @@ btr_page_alloc_low(
 					not initialize the page. */
 {
 	fseg_header_t*	seg_header;
-//	page_t*		root;
+	page_t*		root;
 	page_t*		page;
+	buf_block_t*	root_block;
+	page_zip_des_t*	page_zip;
+	ulint 		reserved;
+	ulint 		level;
 
-//	root = btr_root_get(index, mtr);
+	root_block = btr_root_block_get(index, RW_X_LATCH, mtr);
+	root = buf_block_get_frame(root_block);
 
 //	if (level == 0) {
 //		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
@@ -1189,6 +1194,7 @@ btr_page_alloc_low(
 	page = buf_block_get_frame(block);
 
 	seg_header = page + bytes_offset;
+	level = btr_page_get_level(page, mtr);
 
 	/* Parameter TRUE below states that the caller has made the
 	reservation for free extents, and thus we know that a page can
@@ -1199,7 +1205,19 @@ btr_page_alloc_low(
 //		TRUE, mtr, init_mtr);
 	buf_block_t* new_block = fseg_alloc_free_page_general(
 	    seg_header, hint_page_no,
-	    TRUE, rel_offset, mtr, init_mtr);
+	    TRUE, rel_offset, &reserved, mtr, init_mtr);
+
+	page_zip = buf_block_get_page_zip(root_block);
+
+	/* prev and next links of the root page will be used to store
+	   number of reserved and used pages respectively */
+	btr_page_set_prev(root, page_zip,
+			  btr_page_get_prev(root, mtr) + reserved, mtr);
+
+	if (level == 0) {
+		btr_page_set_next(root, page_zip,
+				  btr_page_get_next(root, mtr) + 1, mtr);
+	}
 
 #ifdef UNIV_DEBUG_SCRUBBING
 	if (block != NULL) {
@@ -1291,8 +1309,7 @@ btr_get_size(
 Gets the number of reserved and used pages in a B-tree.
 @return	number of pages reserved, or ULINT_UNDEFINED if the index
 is unavailable
-MODIFIED: Calculate size of pages by iterating over all internal nodes,
- as all internal nodes contain file segment.*/
+MODIFIED: Calculate size of pages from root node's next and prev links.*/
 UNIV_INTERN
 ulint
 btr_get_size_and_reserved(
@@ -1303,17 +1320,9 @@ btr_get_size_and_reserved(
 	mtr_t*		mtr)	/*!< in/out: mini-transaction where index
 				is s-latched */
 {
-	fseg_header_t*	seg_header;
+
 	page_t*		root;
-	page_t* 	page;
-//	page_t*		next_page;
-	ulint		n=ULINT_UNDEFINED;
-	btr_cur_t 	cursor;
-	ulint 		height;
-	ulint		dummy;
-	buf_block_t*	block;
-	ulint 		next_page_no;
-	ulint		zip_size;
+	ulint		n=0;
 
 	ut_ad(mtr_memo_contains(mtr, dict_index_get_lock(index),
 				MTR_MEMO_S_LOCK));
@@ -1326,82 +1335,17 @@ btr_get_size_and_reserved(
 	}
 
 //	root = btr_root_get(index, mtr);
-	buf_block_t* root_block = btr_root_block_get(index, RW_X_LATCH, mtr);
-	zip_size = dict_table_zip_size(index->table);
-	*used = 0;
+	root = buf_block_get_frame(btr_root_block_get(index, RW_X_LATCH, mtr));
+	if (root != NULL) {
+		*used = btr_page_get_next(root, mtr);
+		n = btr_page_get_prev(root, mtr);
 
-	if (root_block && root_block->page.encrypted == true) {
-		root_block = NULL;
-	}
-
-	root = root_block ? buf_block_get_frame(root_block) : NULL;
-
-	if (root) {
-
-		ut_ad(!dict_index_is_ibuf(index));
-		height = btr_page_get_level(root, mtr);
-
-		if (height == 0) {
-
-			seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_OWN;
-			n = fseg_n_reserved_pages(seg_header, used, mtr);
-
-			ut_ad(*used == 0);
-			ut_ad(n == 0);
-
-			return (n);
+		if(btr_page_get_level(root, mtr) == 0) {
+			/* Add page count for root node in number pages
+			   used by index because root page is not allocated
+			   from any file segment */
+			*used=1;
 		}
-
-		mtr_memo_release(mtr, root_block, MTR_MEMO_PAGE_X_FIX);
-		sync_thread_reset_level(&root_block->lock);
-
-		for(ulint level=1; level<=height ; level++){
-
-			dummy = 0;
-			btr_cur_open_at_index_side(
-			    true, index,
-			    BTR_SEARCH_LEAF | BTR_ALREADY_S_LATCHED, &cursor,
-			    level, mtr);
-			block =
-			    page_cur_get_block(btr_cur_get_page_cur(&cursor));
-			page = buf_block_get_frame(block);
-
-		loop:
-			seg_header = page + PAGE_HEADER + PAGE_BTR_SEG_OWN;
-			n += fseg_n_reserved_pages(seg_header, &dummy, mtr);
-
-			*used+=dummy;
-
-			next_page_no = btr_page_get_next(page, mtr);
-
-			if (buf_block_get_page_no(block) == buf_block_get_page_no(root_block)){
-				mtr_memo_release(mtr, block, MTR_MEMO_PAGE_S_FIX);
-				sync_thread_reset_level(&block->lock);
-			}
-
-			if(next_page_no != FIL_NULL){
-				block = buf_page_get(index->space,
-						     zip_size, next_page_no,
-						     RW_NO_LATCH, mtr);
-				page = buf_block_get_frame(block);
-
-				goto loop;
-
-			}
-
-			if (flag == BTR_N_LEAF_PAGES){
-				break;
-			}
-
-		}
-
-		/* Add page count for root node in number pages reserved and used by index
-		* because root page is not allocated from any file segment */
-		if (flag == BTR_TOTAL_SIZE){
-			n+=1;
-			*used+=1;
-		}
-
 	}
 
 	return(n);
@@ -1461,7 +1405,10 @@ btr_page_free_low(
 	mtr_t*		mtr)	/*!< in: mtr */
 {
 	fseg_header_t*	seg_header;
-//	page_t*		root;
+	page_t*		root;
+	page_t*		ret_page;
+	page_zip_des_t*	page_zip;
+	buf_block_t*	root_block;
 
 	ut_ad(mtr_memo_contains(mtr, block, MTR_MEMO_PAGE_X_FIX));
 	/* The page gets invalid for optimistic searches: increment the frame
@@ -1547,7 +1494,8 @@ btr_page_free_low(
 		return;
 	}
 
-//	root = btr_root_get(index, mtr);
+	root_block = btr_root_block_get(index, RW_X_LATCH, mtr);
+	root = buf_block_get_frame(root_block);
 //	if (level == 0) {
 //		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_LEAF;
 //		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_OWN;
@@ -1555,8 +1503,6 @@ btr_page_free_low(
 //		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_TOP;
 //		seg_header = root + PAGE_HEADER + PAGE_BTR_SEG_PARENT;
 //	}
-
-
 
 	if (scrub) {
 		/**
@@ -1570,11 +1516,22 @@ btr_page_free_low(
 
 	ut_ad(buf_block_get_page_no(block) != index->page);
 
-	seg_header = buf_block_get_frame(block) + PAGE_HEADER + PAGE_BTR_SEG_PARENT;
+	ret_page = buf_block_get_frame(block);
+	seg_header = ret_page + PAGE_HEADER + PAGE_BTR_SEG_PARENT;
 
 	fseg_free_page(seg_header,
 		       buf_block_get_space(block),
 		       buf_block_get_page_no(block), mtr);
+
+	page_zip = buf_block_get_page_zip(root_block);
+
+	if (btr_page_get_level(ret_page, mtr) == 0) {
+		btr_page_set_next(root, page_zip,
+				  btr_page_get_next(root, mtr) - 1, mtr);
+	}
+
+	btr_page_set_prev(root, page_zip, btr_page_get_prev(root, mtr) - 1,
+			  mtr);
 
 
 	/* The page was marked free in the allocation bitmap, but it
@@ -1835,6 +1792,7 @@ btr_create(
 	page_t*		page;
 	page_zip_des_t*	page_zip;
 	ulint*		rel_offset=NULL;
+	ulint		reserved;
 
 	/* Create the two new segments (one, in the case of an ibuf tree) for
 	the index tree; the segment headers are put on the allocated root page
@@ -1867,7 +1825,7 @@ btr_create(
 		block = fseg_alloc_free_page(
 		    buf_block_get_frame(ibuf_hdr_block)
 		    + IBUF_HEADER + IBUF_TREE_SEG_HEADER,
-		    IBUF_TREE_ROOT_PAGE_NO, rel_offset, mtr);
+		    IBUF_TREE_ROOT_PAGE_NO, rel_offset, &reserved, mtr);
 
 		if (block == NULL) {
 			return(FIL_NULL);
@@ -1942,9 +1900,11 @@ btr_create(
 		/* Set the relative offset of the page */
 		btr_page_set_rel_offset(page, page_zip, FIL_NULL_16, mtr);
 	}
-	/* Set the next node and previous node fields */
-	btr_page_set_next(page, page_zip, FIL_NULL, mtr);
-	btr_page_set_prev(page, page_zip, FIL_NULL, mtr);
+	/* Set the next node and previous node fields
+	   now root node's next = number of used pages in leaf level and
+	   prev link = number of reserved pages in tree */
+	btr_page_set_next(page, page_zip, 0, mtr);
+	btr_page_set_prev(page, page_zip, 1, mtr);
 
 	/* We reset the free bits for the page to allow creation of several
 	trees in the same mtr, otherwise the latch on a bitmap page would
@@ -2010,14 +1970,17 @@ btr_free_but_not_root(
 //	mtr_s_lock(dict_index_get_lock(index), &mtr);
 
 	height = btr_page_get_level(root, mtr);
+	mtr_commit(&mtr);
+
 	if (height == 0) {
-		mtr_commit(&mtr);
 		return;
 	}
 
 	for (ulint i = 0; i < height; i++) {
+
+		mtr_start(&mtr);
 		btr_cur_open_at_index_side(true, index, BTR_MODIFY_TREE,
-					   &cursor, 1, &mtr);
+					   &cursor, i+1, &mtr);
 		block = page_cur_get_block(btr_cur_get_page_cur(&cursor));
 
 		page = buf_block_get_frame(block);
@@ -2035,14 +1998,14 @@ btr_free_but_not_root(
 		}
 
 		next_page = btr_page_get_next(page, &mtr);
-		if (next_page != FIL_NULL) {
+		if (next_page != FIL_NULL && root_page_no != buf_block_get_page_no(block)) {
 			page = buf_block_get_frame(buf_page_get(
-			    space, zip_size, next_page, RW_NO_LATCH, &mtr));
+			    space, zip_size, next_page, RW_X_LATCH, &mtr));
 			goto loop;
 		}
+		mtr_commit(&mtr);
 	}
 
-	mtr_commit(&mtr);
 //	root = btr_page_get(space, zip_size, root_page_no, RW_X_LATCH,
 //			    NULL, &mtr);
 //
@@ -2548,7 +2511,7 @@ guaranteed to be available before this function is called.
 MODIFIED: btr_page_alloc function in turn find relative offset of index page and
 btr_page_create function set relative offset. Changes for file segments.*/
 UNIV_INTERN
-rec_t*
+dberr_t
 btr_root_raise_and_insert(
 /*======================*/
 	ulint		flags,	/*!< in: undo logging and locking flags */
@@ -2560,6 +2523,7 @@ btr_root_raise_and_insert(
 	mem_heap_t**	heap,	/*!< in/out: pointer to memory heap, or NULL */
 	const dtuple_t*	tuple,	/*!< in: tuple to insert */
 	ulint		n_ext,	/*!< in: number of externally stored columns */
+	trx_id_t	trx_id,
 	mtr_t*		mtr)	/*!< in: mtr */
 {
 	dict_index_t*	index;
@@ -2575,9 +2539,10 @@ btr_root_raise_and_insert(
 	page_zip_des_t*	new_page_zip;
 	buf_block_t*	root_block;
 	buf_block_t*	new_block;
-	fseg_header_t* 	root_header;
-	fseg_header_t* 	new_page_header;
 	ulint 		rel_offset;
+	ulint 		old_root_hdr_offset;
+	ulint		old_root_hdr_page;
+	ulint		old_root_hdr_space;
 
 	root = btr_cur_get_page(cursor);
 	root_block = btr_cur_get_block(cursor);
@@ -2609,6 +2574,24 @@ btr_root_raise_and_insert(
 
 	level = btr_page_get_level(root, mtr);
 
+	if (!dict_index_is_ibuf(index)) {
+		if (level != 0) {
+
+			old_root_hdr_offset = mach_read_from_2(root + PAGE_HEADER + PAGE_BTR_SEG_OWN +
+					  			FSEG_HDR_OFFSET);
+
+			old_root_hdr_page = mach_read_from_4(root + PAGE_HEADER + PAGE_BTR_SEG_OWN +
+								FSEG_HDR_PAGE_NO);
+
+			old_root_hdr_space = mach_read_from_4(root + PAGE_HEADER + PAGE_BTR_SEG_OWN +
+								     FSEG_HDR_SPACE);
+
+			root_block = fseg_create(dict_index_get_space(index),
+						 buf_block_get_page_no(root_block),
+						 PAGE_HEADER + PAGE_BTR_SEG_OWN, mtr);
+		}
+	}
+
 //	new_block = btr_page_alloc(index, 0, FSP_NO_DIR, level, mtr, mtr);
 
 	new_block = btr_page_alloc(index, root_block, PAGE_HEADER +  PAGE_BTR_SEG_OWN,
@@ -2616,7 +2599,7 @@ btr_root_raise_and_insert(
 
 
 	if (new_block == NULL && os_has_said_disk_full) {
-		return(NULL);
+		return(DB_OUT_OF_FILE_SPACE);
         }
 
 	new_page = buf_block_get_frame(new_block);
@@ -2634,42 +2617,24 @@ btr_root_raise_and_insert(
 
 	if (!dict_index_is_ibuf(index)) {
 		/* Set segment header of new node */
-		root_header = root + PAGE_HEADER + PAGE_BTR_SEG_OWN;
 
-		if (level == 0) {
-			/* Store root page header as parent segment header in its child
-			 * here child is leaf node */
-			new_page_header =
-			    new_page + PAGE_HEADER + PAGE_BTR_SEG_PARENT;
-		} else {
-			/* Store root page header as own segment header in its child
-			 * here child is internal node */
-			new_page_header =
-			    new_page + PAGE_HEADER + PAGE_BTR_SEG_OWN;
-		}
-
-		btr_copy_seg_hdr(root_header, new_page_header, mtr);
-
-		/* Create new segment for root if root is at non zero level.
-		 * Add new segment header as parent segment header in root's child.
-		 * here child is internal node */
+		btr_copy_seg_hdr(buf_block_get_frame(root_block) + PAGE_HEADER + PAGE_BTR_SEG_OWN,
+				 new_page + PAGE_HEADER + PAGE_BTR_SEG_PARENT, mtr);
 
 		if (level != 0) {
-			root_block =
-			    fseg_create(dict_index_get_space(index),
-					buf_block_get_page_no(root_block),
-					PAGE_HEADER + PAGE_BTR_SEG_OWN, mtr);
 
-			root_header = buf_block_get_frame(root_block) +
-				      PAGE_HEADER + PAGE_BTR_SEG_OWN;
+			ut_ad(old_root_hdr_offset && old_root_hdr_page);
+			mlog_write_ulint(new_page + PAGE_HEADER + PAGE_BTR_SEG_OWN + FSEG_HDR_OFFSET,
+					 old_root_hdr_offset, MLOG_2BYTES, mtr);
 
-			new_page_header =
-			    new_page + PAGE_HEADER + PAGE_BTR_SEG_PARENT;
+			mlog_write_ulint(new_page + PAGE_HEADER + PAGE_BTR_SEG_OWN + FSEG_HDR_PAGE_NO,
+					 old_root_hdr_page, MLOG_4BYTES, mtr);
 
-			btr_copy_seg_hdr(root_header, new_page_header, mtr);
+			mlog_write_ulint(new_page + PAGE_HEADER + PAGE_BTR_SEG_OWN + FSEG_HDR_SPACE,
+					 old_root_hdr_space, MLOG_4BYTES, mtr);
+
 		}
 	}
-
 	/* Copy the records from root to the new page one by one. */
 
 	if (0
@@ -2712,8 +2677,7 @@ btr_root_raise_and_insert(
 	/* Build the node pointer (= node key and page address) for the
 	child */
 
-	node_ptr =
-	    dict_index_build_node_ptr(index, rec, rel_offset, *heap, level);
+	node_ptr = dict_index_build_node_ptr(index, rec, rel_offset, *heap, level);
 
 //	node_ptr = dict_index_build_node_ptr(
 //		index, rec, new_page_no, *heap, level);
@@ -2725,6 +2689,10 @@ btr_root_raise_and_insert(
 			     dtuple_get_info_bits(node_ptr)
 			     | REC_INFO_MIN_REC_FLAG);
 
+	page_t* root_page = buf_block_get_frame(root_block);
+	ulint prev_no = btr_page_get_prev(root_page, mtr);
+	ulint next_no = btr_page_get_next(root_page, mtr);
+
 	/* Rebuild the root page to get free space */
 	btr_page_empty(root_block, root_page_zip, index, level + 1, mtr);
 
@@ -2733,8 +2701,12 @@ btr_root_raise_and_insert(
 	must be FIL_NULL if root_page_zip != NULL, because the
 	REC_INFO_MIN_REC_FLAG (of the first user record) will be
 	set if and only if btr_page_get_prev() == FIL_NULL. */
-	btr_page_set_next(root, root_page_zip, FIL_NULL, mtr);
-	btr_page_set_prev(root, root_page_zip, FIL_NULL, mtr);
+//	btr_page_set_next(root, root_page_zip, FIL_NULL, mtr);
+//	btr_page_set_prev(root, root_page_zip, FIL_NULL, mtr);
+
+	/* now root page's next, prev links will not be null*/
+	btr_page_set_next(root, root_page_zip, next_no, mtr);
+	btr_page_set_prev(root, root_page_zip, prev_no, mtr);
 
 	page_cursor = btr_cur_get_page_cur(cursor);
 
@@ -2770,7 +2742,7 @@ btr_root_raise_and_insert(
 
 	/* Split the child and insert tuple */
 	return(btr_page_split_and_insert(flags, cursor, offsets, heap,
-					 tuple, n_ext, mtr));
+					 tuple, n_ext, trx_id, mtr));
 }
 
 /*************************************************************//**
@@ -3149,35 +3121,35 @@ btr_attach_half_pages(
 	ulint		flags,		/*!< in: undo logging and
 					locking flags */
 	dict_index_t*	index,		/*!< in: the index tree */
-	buf_block_t*	block,		/*!< in/out: page to be split */
-	const rec_t*	split_rec,	/*!< in: first record on upper
-					half page */
-	buf_block_t*	new_block,	/*!< in/out: the new half page */
+	buf_block_t*	left_block,		/*!< in/out: page to be split */
+	buf_block_t*	right_block,	/*!< in/out: the new half page */
 	ulint		direction,	/*!< in: FSP_UP or FSP_DOWN */
 	mtr_t*		mtr)		/*!< in: mtr */
 {
-	ulint		space;
-	ulint		zip_size;
-	ulint		prev_page_no;
-	ulint		next_page_no;
 	ulint		level;
-	page_t*		page		= buf_block_get_frame(block);
 	page_t*		lower_page;
 	page_t*		upper_page;
-	ulint		lower_page_no;
-	ulint		upper_page_no;
 	ulint		lower_rel_offset;
 	ulint		upper_rel_offset;
-	page_zip_des_t*	lower_page_zip;
-	page_zip_des_t*	upper_page_zip;
 	dtuple_t*	node_ptr_upper;
 	mem_heap_t*	heap;
+	const rec_t* 	split_rec;
 
-	ut_ad(mtr_memo_contains(mtr, block, MTR_MEMO_PAGE_X_FIX));
-	ut_ad(mtr_memo_contains(mtr, new_block, MTR_MEMO_PAGE_X_FIX));
+	ut_ad(mtr_memo_contains(mtr, left_block, MTR_MEMO_PAGE_X_FIX));
+	ut_ad(mtr_memo_contains(mtr, right_block, MTR_MEMO_PAGE_X_FIX));
 
 	/* Create a memory heap where the data tuple is stored */
 	heap = mem_heap_create(1024);
+
+
+
+	lower_page = buf_block_get_frame(left_block);
+	lower_rel_offset = mach_read_from_2(lower_page + PAGE_HEADER +
+					    PAGE_REL_OFFSET);
+	upper_page = buf_block_get_frame(right_block);
+	upper_rel_offset = mach_read_from_2(upper_page + PAGE_HEADER +
+					    PAGE_REL_OFFSET);
+	split_rec = page_rec_get_next_const(page_get_infimum_rec(upper_page));
 
 	/* Based on split direction, decide upper and lower pages */
 	if (direction == FSP_DOWN) {
@@ -3185,20 +3157,9 @@ btr_attach_half_pages(
 		btr_cur_t	cursor;
 		ulint*		offsets;
 
-		lower_page = buf_block_get_frame(new_block);
-		lower_page_no = buf_block_get_page_no(new_block);
-		lower_rel_offset = mach_read_from_2(lower_page + PAGE_HEADER +
-						    PAGE_REL_OFFSET);
-		lower_page_zip = buf_block_get_page_zip(new_block);
-		upper_page = buf_block_get_frame(block);
-		upper_page_no = buf_block_get_page_no(block);
-		upper_rel_offset = mach_read_from_2(upper_page + PAGE_HEADER +
-						    PAGE_REL_OFFSET);
-		upper_page_zip = buf_block_get_page_zip(block);
-
 		/* Look up the index for the node pointer to page */
 		offsets = btr_page_get_father_block(NULL, heap, index,
-						    block, mtr, &cursor);
+						    right_block, mtr, &cursor);
 
 		/* Replace the address of the old child node (= page) with the
 		address of the new lower half */
@@ -3212,30 +3173,19 @@ btr_attach_half_pages(
 //			btr_cur_get_page_zip(&cursor),
 //			offsets, lower_page_no, mtr);
 		mem_heap_empty(heap);
-	} else {
-		lower_page = buf_block_get_frame(block);
-		lower_page_no = buf_block_get_page_no(block);
-		lower_rel_offset = mach_read_from_2(lower_page + PAGE_HEADER +
-						    PAGE_REL_OFFSET);
-		lower_page_zip = buf_block_get_page_zip(block);
-		upper_page = buf_block_get_frame(new_block);
-		upper_page_no = buf_block_get_page_no(new_block);
-		upper_rel_offset = mach_read_from_2(upper_page + PAGE_HEADER +
-						    PAGE_REL_OFFSET);
-		upper_page_zip = buf_block_get_page_zip(new_block);
 	}
 
 	/* Get the level of the split pages */
-	level = btr_page_get_level(buf_nonnull_block_get_frame(block), mtr);
+	level = btr_page_get_level(buf_nonnull_block_get_frame(left_block), mtr);
 	ut_ad(level
-	      == btr_page_get_level(buf_block_get_frame(new_block), mtr));
+	      == btr_page_get_level(buf_block_get_frame(right_block), mtr));
 
 	/* Build the node pointer (= node key and page address) for the upper
 	half */
 
 	node_ptr_upper = dict_index_build_node_ptr(index, split_rec,
 						   upper_rel_offset, heap, level);
-
+//
 //	node_ptr_upper = dict_index_build_node_ptr(index, split_rec,
 //						   upper_page_no, heap, level);
 
@@ -3248,6 +3198,59 @@ btr_attach_half_pages(
 	/* Free the memory heap */
 	mem_heap_free(heap);
 
+}
+
+/**************************************************************//**
+Attaches the halves of an index page on the appropriate level in an
+index tree. */
+static MY_ATTRIBUTE((nonnull))
+void
+btr_update_half_pages_links(
+/*==================*/
+    dict_index_t*	index,		/*!< in: the index tree */
+    buf_block_t*	block,		/*!< in/out: page to be split */
+
+    buf_block_t*	new_block,	/*!< in/out: the new half page */
+    ulint		direction,	/*!< in: FSP_UP or FSP_DOWN */
+    mtr_t*		mtr)		/*!< in: mtr */
+{
+	ulint		space;
+	ulint		zip_size;
+	ulint		prev_page_no;
+	ulint		next_page_no;
+//	ulint		level;
+	page_t*		page		= buf_block_get_frame(block);
+	page_t*		lower_page;
+	page_t*		upper_page;
+	ulint		lower_page_no;
+	ulint		upper_page_no;
+	page_zip_des_t*	lower_page_zip;
+	page_zip_des_t*	upper_page_zip;
+
+	ut_ad(mtr_memo_contains(mtr, block, MTR_MEMO_PAGE_X_FIX));
+	ut_ad(mtr_memo_contains(mtr, new_block, MTR_MEMO_PAGE_X_FIX));
+
+	/* Create a memory heap where the data tuple is stored */
+
+	/* Based on split direction, decide upper and lower pages */
+	if (direction == FSP_DOWN) {
+
+		lower_page = buf_block_get_frame(new_block);
+		lower_page_no = buf_block_get_page_no(new_block);
+		lower_page_zip = buf_block_get_page_zip(new_block);
+		upper_page = buf_block_get_frame(block);
+		upper_page_no = buf_block_get_page_no(block);
+		upper_page_zip = buf_block_get_page_zip(block);
+
+	} else {
+		lower_page = buf_block_get_frame(block);
+		lower_page_no = buf_block_get_page_no(block);
+		lower_page_zip = buf_block_get_page_zip(block);
+		upper_page = buf_block_get_frame(new_block);
+		upper_page_no = buf_block_get_page_no(new_block);
+		upper_page_zip = buf_block_get_page_zip(new_block);
+	}
+
 	/* Get the previous and next pages of page */
 
 	prev_page_no = btr_page_get_prev(page, mtr);
@@ -3259,7 +3262,7 @@ btr_attach_half_pages(
 
 	if (prev_page_no != FIL_NULL) {
 		buf_block_t*	prev_block = btr_block_get(
-			space, zip_size, prev_page_no, RW_X_LATCH, index, mtr);
+		    space, zip_size, prev_page_no, RW_X_LATCH, index, mtr);
 #ifdef UNIV_BTR_DEBUG
 		ut_a(page_is_comp(prev_block->frame) == page_is_comp(page));
 		ut_a(btr_page_get_next(prev_block->frame, mtr)
@@ -3273,7 +3276,7 @@ btr_attach_half_pages(
 
 	if (next_page_no != FIL_NULL) {
 		buf_block_t*	next_block = btr_block_get(
-			space, zip_size, next_page_no, RW_X_LATCH, index, mtr);
+		    space, zip_size, next_page_no, RW_X_LATCH, index, mtr);
 #ifdef UNIV_BTR_DEBUG
 		ut_a(page_is_comp(next_block->frame) == page_is_comp(page));
 		ut_a(btr_page_get_prev(next_block->frame, mtr)
@@ -3466,9 +3469,12 @@ ADDED*/
 buf_block_t*
 btr_child_pages_reallocation(
     buf_block_t* 	block,/*!< in/out: buf block of new parent node*/
-    rec_t*		limit_rec, /*!< in: record upto/from which child pages needs reallocation */
-    bool 		start,	/*!< in: reallocated pages is on the start or end of record list */
+    rec_t*		start_rec, /*!< in: record from which child pages needs reallocation
+ 					not inlcuding start_rec*/
+    rec_t*		limit_rec, /*!< in: record upto which child pages needs reallocation
+ 					not inlcuding limit_rec*/
     dict_index_t* 	index,	/*!< in: index tree */
+    fseg_header_t*	old_parent_hdr, /*!< in: old parent's file segment header */
     mtr_t* 		mtr)	/*!< in: mtr */
 {
 	buf_block_t *	child_block;
@@ -3478,44 +3484,49 @@ btr_child_pages_reallocation(
 	page_zip_des_t* new_page_zip;
 	page_zip_des_t* page_zip;
 	page_t *	page;
-	fseg_header_t*  child_seg_hdr;
-	fseg_header_t*  seg_hdr;
 	ulint 		rel_offset;
 	mem_heap_t* 	heap = NULL;
 	ulint* 		offsets = NULL;
 	rec_t* 		rec_node_ptr;
-	bool		condition;
 	buf_block_t*	prev_new_child_block=NULL;
+	page_cur_t	cur1;
+	ulint 		space;
+	ulint 		next_page_no;
+	ulint		prev_page_no;
 
 	ut_ad(mtr_memo_contains(mtr, block, MTR_MEMO_PAGE_X_FIX));
 
 	page = buf_block_get_frame(block);
 
-	if (start) {
+	page_cur_position(page_rec_get_next(start_rec), block, &cur1);
 
-		/* Reallocate child pages (pointed by node pointer record) from
-		starting records of the block upto limit_rec. Not include limit_rec.*/
-
-		rec_node_ptr = page_rec_get_next(page_get_infimum_rec(page));
-		condition = (rec_node_ptr == limit_rec);
-	} else {
-
-		/* Reallocate child pages (pointed by node pointer record) from
-		limit_rec upto end of records in the block. Not include limit-rec.*/
-
-		ut_ad(!page_rec_is_supremum(limit_rec));
-		rec_node_ptr = page_rec_get_next(limit_rec);
-		condition = page_rec_is_supremum(rec_node_ptr);
-	}
+//	if (start) {
+//
+//		/* Reallocate child pages (pointed by node pointer record) from
+//		starting records of the block upto limit_rec. Not include limit_rec.*/
+//
+//		page_cur_position(page_rec_get_next(page_get_infimum_rec(page)), block, &cur1);
+//		condition = (page_cur_get_rec(&cur1) == limit_rec);
+//	} else {
+//
+//		/* Reallocate child pages (pointed by node pointer record) from
+//		limit_rec upto end of records in the block. Not include limit-rec.*/
+//
+//		ut_ad(!page_rec_is_supremum(limit_rec));
+//		page_cur_position(page_rec_get_next(limit_rec), block, &cur1);
+//		condition = page_rec_is_supremum(page_cur_get_rec(&cur1));
+//	}
 
 	/* Reallocate pages one by one in loop */
-	while (!condition) {
+	while (! (page_cur_get_rec(&cur1) == limit_rec)) {
+
+		rec_node_ptr = page_cur_get_rec(&cur1);
+		ut_ad(!page_rec_is_supremum(rec_node_ptr));
 
 		/* Allocate the new child node */
 		new_child_block = btr_page_alloc(
 		    index, block, PAGE_HEADER + PAGE_BTR_SEG_OWN,
 		    0, &rel_offset, mtr, mtr);
-
 
 		if (new_child_block == NULL && os_has_said_disk_full) {
 			/* NOTE: Code should never reach here as we already reserved enough
@@ -3527,18 +3538,21 @@ btr_child_pages_reallocation(
 		offsets = rec_get_offsets(rec_node_ptr, index, offsets,
 					   ULINT_UNDEFINED, &heap);
 
-		seg_hdr = page + PAGE_HEADER + PAGE_BTR_SEG_OWN;
+
 		child_block = btr_node_ptr_get_child(
-		    rec_node_ptr, index, offsets, seg_hdr,
+		    rec_node_ptr, index, offsets, old_parent_hdr,
 		    dict_table_zip_size(index->table), mtr);
 
-		/* Create the new child node */
 		child_page = buf_block_get_frame(child_block);
 		page_zip = buf_block_get_page_zip(child_block);
+		prev_page_no = btr_page_get_prev(child_page, mtr);
+		next_page_no = btr_page_get_next(child_page, mtr);
 
 		new_child_page = buf_block_get_frame(new_child_block);
 		new_page_zip = buf_block_get_page_zip(new_child_block);
 		ut_ad(new_page_zip == page_zip);
+
+		/* Create the new child node */
 
 		btr_page_create(new_child_block, new_page_zip, index,
 				btr_page_get_level(child_page, mtr), rel_offset, mtr);
@@ -3550,18 +3564,15 @@ btr_child_pages_reallocation(
 			/* If child node is not on leaf level then node has its own file segment.
 			 * So we need to move that segment header to new child node.*/
 
-			child_seg_hdr =
-			    child_page + PAGE_HEADER + PAGE_BTR_SEG_OWN;
-
 			btr_copy_seg_hdr(
-			    child_seg_hdr,
+			    child_page + PAGE_HEADER + PAGE_BTR_SEG_OWN,
 			    new_child_page + PAGE_HEADER + PAGE_BTR_SEG_OWN, mtr);
 		}
 
 		/* Set parent segment header for the new child node. */
 
 		btr_copy_seg_hdr(
-		    seg_hdr,
+		    page + PAGE_HEADER + PAGE_BTR_SEG_OWN,
 		    new_child_page + PAGE_HEADER + PAGE_BTR_SEG_PARENT, mtr);
 
 
@@ -3577,8 +3588,25 @@ btr_child_pages_reallocation(
 			/* If child page is the first page that is reallocated,
 			 then only its prev page no is same as old child's prev.*/
 
-			btr_page_set_prev(new_child_page, new_page_zip,
-					  btr_page_get_prev(child_page, mtr), mtr);
+			space = buf_block_get_space(child_block);
+
+			btr_page_set_prev(new_child_page, new_page_zip, prev_page_no, mtr);
+
+			if (prev_page_no != FIL_NULL) {
+				buf_block_t* prev_block = btr_block_get(
+				    space, buf_block_get_zip_size(child_block),
+				    prev_page_no, RW_X_LATCH, index, mtr);
+#ifdef UNIV_BTR_DEBUG
+				ut_a(page_is_comp(prev_block->frame) == page_is_comp(child_page));
+				ut_a(btr_page_get_next(prev_block->frame, mtr)
+				     == buf_block_get_page_no(child_block));
+#endif /* UNIV_BTR_DEBUG */
+
+				btr_page_set_next(buf_block_get_frame(prev_block),
+						  buf_block_get_page_zip(prev_block),
+						  buf_block_get_page_no(new_child_block), mtr);
+			}
+
 		}
 
 
@@ -3630,24 +3658,29 @@ btr_child_pages_reallocation(
 		    btr_page_get_rel_offset(new_child_block), mtr);
 
 		/* Get next node pointer record */
-		rec_node_ptr = page_rec_get_next(rec_node_ptr);
-
-		ut_ad(!page_rec_is_supremum(rec_node_ptr));
+		page_cur_move_to_next(&cur1);
 
 		/* Store child as prev_child so that in the next loop we could
 		 update next and prev links on its level */
 		prev_new_child_block = new_child_block;
 
-		/* Update condition for loop */
-		if (start){
-			condition = (rec_node_ptr == limit_rec);
-		} else {
-			condition = page_rec_is_supremum(rec_node_ptr);
-		}
 	}
 
-	btr_page_set_next(new_child_page, new_page_zip,
-			  btr_page_get_next(child_page, mtr), mtr);
+	btr_page_set_next(new_child_page, new_page_zip, next_page_no, mtr);
+
+	if (next_page_no != FIL_NULL) {
+		buf_block_t*	next_block = btr_block_get(
+		    space, buf_block_get_zip_size(child_block), next_page_no, RW_X_LATCH, index, mtr);
+#ifdef UNIV_BTR_DEBUG
+		ut_a(page_is_comp(next_block->frame) == page_is_comp(child_page));
+		ut_a(btr_page_get_prev(next_block->frame, mtr)
+		     == page_get_page_no(child_page));
+#endif /* UNIV_BTR_DEBUG */
+
+		btr_page_set_prev(buf_block_get_frame(next_block),
+				  buf_block_get_page_zip(next_block),
+				  buf_block_get_page_no(new_child_block), mtr);
+	}
 
 	if (heap) {
 		mem_heap_free(heap);
@@ -3672,7 +3705,7 @@ MODIFIED: btr_page_alloc function in turn find relative offset of index page and
 btr_page_create function set relative offset. Changes for file segments.
 Reallocation of child pages to thier new parent's file segment if required.*/
 UNIV_INTERN
-rec_t*
+dberr_t
 btr_page_split_and_insert(
 /*======================*/
 	ulint		flags,	/*!< in: undo logging and locking flags */
@@ -3683,6 +3716,7 @@ btr_page_split_and_insert(
 	mem_heap_t**	heap,	/*!< in/out: pointer to memory heap, or NULL */
 	const dtuple_t*	tuple,	/*!< in: tuple to insert */
 	ulint		n_ext,	/*!< in: number of externally stored columns */
+	trx_id_t 	trx_id,
 	mtr_t*		mtr)	/*!< in: mtr */
 {
 	buf_block_t*	block;
@@ -3699,7 +3733,7 @@ btr_page_split_and_insert(
 	buf_block_t*	right_block;
 	buf_block_t*	insert_block;
 	page_cur_t*	page_cursor;
-	rec_t*		first_rec;
+//	rec_t*		first_rec;
 	byte*		buf = 0; /* remove warning */
 	rec_t*		move_limit;
 	ibool		insert_will_fit;
@@ -3708,6 +3742,7 @@ btr_page_split_and_insert(
 	rec_t*		rec;
 	ulint		n_uniq;
 	ulint 		rel_offset;
+	ibool		without_split=FALSE;
 
 	if (!*heap) {
 		*heap = mem_heap_create(1024);
@@ -3738,7 +3773,9 @@ func_start:
 		flags, cursor, offsets, *heap, tuple, n_ext, mtr);
 
 	if (rec != NULL) {
-		return(rec);
+		without_split=TRUE;
+		goto func_exit;
+//		return(rec);
 	}
 
 	page_no = buf_block_get_page_no(block);
@@ -3787,14 +3824,14 @@ func_start:
 
 	DBUG_EXECUTE_IF("disk_is_full",
 			os_has_said_disk_full = true;
-                        return(NULL););
+                        return(DB_OUT_OF_FILE_SPACE););
 
 	/* 2. Allocate a new page to the index */
 	new_block = btr_page_alloc(cursor->index, block, PAGE_HEADER + PAGE_BTR_SEG_PARENT,
 				   hint_page_no, &rel_offset, mtr, mtr);
 
 	if (new_block == NULL && os_has_said_disk_full) {
-		return(NULL);
+		return(DB_OUT_OF_FILE_SPACE);
         }
 
 	new_page = buf_block_get_frame(new_block);
@@ -3822,7 +3859,7 @@ func_start:
 	upper half */
 
 	if (split_rec) {
-		first_rec = move_limit = split_rec;
+		move_limit = split_rec;
 
 		*offsets = rec_get_offsets(split_rec, cursor->index, *offsets,
 					   n_uniq, heap);
@@ -3843,7 +3880,7 @@ func_start:
 		}
 	} else if (insert_left) {
 		ut_a(n_iterations > 0);
-		first_rec = page_rec_get_next(page_get_infimum_rec(page));
+//		first_rec = page_rec_get_next(page_get_infimum_rec(page));
 		move_limit = page_rec_get_next(btr_cur_get_rec(cursor));
 	} else {
 insert_empty:
@@ -3852,15 +3889,18 @@ insert_empty:
 		buf = (byte*) mem_alloc(rec_get_converted_size(cursor->index,
 							       tuple, n_ext));
 
-		first_rec = rec_convert_dtuple_to_rec(buf, cursor->index,
-						      tuple, n_ext);
+//		first_rec = rec_convert_dtuple_to_rec(buf, cursor->index,
+//						      tuple, n_ext);
 		move_limit = page_rec_get_next(btr_cur_get_rec(cursor));
 	}
 	/*first_rec is first record on upper half-page = split_rec*/
-	/* 4. Do first the modifications in the tree structure */
 
-	btr_attach_half_pages(flags, cursor->index, block,/*recursive call to upwards on tree*/
-			      first_rec, new_block, direction, mtr);
+	/* 4. Do first the modifications in the tree structure
+	 * Modified - only update page links on the level*/
+
+	btr_update_half_pages_links(cursor->index, block, new_block, direction, mtr);
+//	btr_attach_half_pages(flags, cursor->index, block,/*recursive call to upwards on tree*/
+//			      first_rec, new_block, direction, mtr);
 
 	/* If the split is made on the leaf level and the insert will fit
 	on the appropriate half-page, we may release the tree x-latch.
@@ -3884,12 +3924,12 @@ insert_empty:
 						offsets, tuple, n_ext, heap);
 	}
 
-	if (insert_will_fit && page_is_leaf(page)
-	    && !dict_index_is_online_ddl(cursor->index)) {
-
-		mtr_memo_release(mtr, dict_index_get_lock(cursor->index),
-				 MTR_MEMO_X_LOCK);
-	}
+//	if (insert_will_fit && page_is_leaf(page)
+//	    && !dict_index_is_online_ddl(cursor->index)) {
+//
+//		mtr_memo_release(mtr, dict_index_get_lock(cursor->index),
+//				 MTR_MEMO_X_LOCK);
+//	}
 	/*move_limit is for record transfer from one page to another. */
 	/* 5. Move then the records to the new page */
 	if (direction == FSP_DOWN) {
@@ -3984,57 +4024,6 @@ insert_empty:
 	}
 #endif /* UNIV_ZIP_DEBUG */
 
-	/* Reallocate child pages to other parent's file segment in the
-	 * case where parent node splits. */
-	bool is_leaf = page_is_leaf(buf_block_get_frame(left_block));
-
-	ut_ad(is_leaf == page_is_leaf(buf_block_get_frame(right_block)));
-
-	if (!dict_index_is_ibuf(cursor->index) && !is_leaf){
-
-		if (direction == FSP_DOWN){
-
-			/* Create File Segment for new parent created after split */
-
-			left_block = fseg_create(cursor->index->space, buf_block_get_page_no(left_block),
-					    PAGE_HEADER + PAGE_BTR_SEG_OWN, mtr);
-
-			if (left_block == NULL) {
-				/* NOTE: Code should never reach here as we already reserved enough
-				 * free space before this funciton call */
-				return(NULL);
-			}
-
-			left_block = btr_child_pages_reallocation(
-			    left_block, page_get_supremum_rec(buf_block_get_frame(left_block)),
-			    TRUE, cursor->index, mtr);
-
-			if (left_block == NULL){
-				return(NULL);
-			}
-
-		} else {
-			/* Create File Segment for new parent created after split */
-
-			right_block = fseg_create(cursor->index->space, buf_block_get_page_no(right_block),
-						 PAGE_HEADER + PAGE_BTR_SEG_OWN, mtr);
-
-			if (right_block == NULL) {
-				/* NOTE: Code should never reach here as we already reserved enough
-				 * free space before this funciton call */
-				return(NULL);
-			}
-
-			right_block = btr_child_pages_reallocation(
-			    right_block, page_get_supremum_rec(buf_block_get_frame(left_block)),
-			    TRUE, cursor->index, mtr);
-
-			if (right_block == NULL){
-				return(NULL);
-			}
-		}
-	}
-
 	/* At this point, split_rec, move_limit and first_rec may point
 	to garbage on the old page. */
 
@@ -4114,6 +4103,137 @@ insert_failed:
 	}
 
 func_exit:
+
+	if(!without_split) {
+		if (tuple == NULL) {
+			ut_ad(rec == NULL);
+		}
+		ut_ad(!rec || rec_offs_validate(rec, cursor->index, *offsets));
+	}
+
+	if(trx_id){
+		ibool inherit=FALSE;
+		if (rec == NULL && os_has_said_disk_full) {
+			return(DB_OUT_OF_FILE_SPACE);
+		}
+
+		ut_ad(page_rec_get_next(btr_cur_get_rec(cursor)) == rec);
+
+		if (!(flags & BTR_NO_LOCKING_FLAG)) {
+			/* The cursor might be moved to the other page,
+			and the max trx id field should be updated after
+			the cursor was fixed. */
+			if (!dict_index_is_clust(cursor->index)) {
+				page_update_max_trx_id(
+					btr_cur_get_block(cursor),
+					btr_cur_get_page_zip(cursor),
+					trx_id, mtr);
+			}
+
+			if (!page_rec_is_infimum(btr_cur_get_rec(cursor))) {
+				/* split and inserted need to call
+				lock_update_insert() always. */
+				inherit = TRUE;
+			}
+
+			buf_block_t* block1 = btr_cur_get_block(cursor);
+			buf_frame_t* frame = NULL;
+
+			if (block1) {
+				frame = buf_block_get_frame(block1);
+			}
+			/* split and inserted need to call
+			lock_update_insert() always. */
+			if (frame &&  btr_page_get_prev(frame, mtr) == FIL_NULL) {
+				inherit = TRUE;
+			}
+		}
+
+	#ifdef BTR_CUR_ADAPT
+		btr_search_update_hash_on_insert(cursor);
+	#endif
+		if (inherit && !(flags & BTR_NO_LOCKING_FLAG)) {
+
+			lock_update_insert(btr_cur_get_block(cursor), rec);
+		}
+	}
+
+	if(without_split){
+		return (DB_SUCCESS);
+	}
+
+
+	/* Reallocate child pages to other parent's file segment in the
+	 * case where parent node splits. */
+	bool is_leaf = page_is_leaf(buf_block_get_frame(left_block));
+
+	ut_ad(is_leaf == page_is_leaf(buf_block_get_frame(right_block)));
+
+	if (!dict_index_is_ibuf(cursor->index) && !is_leaf){
+
+		if (direction == FSP_DOWN){
+
+			/* Create File Segment for new parent created after split */
+
+			left_block = fseg_create(cursor->index->space,
+						 buf_block_get_page_no(left_block),
+						 PAGE_HEADER + PAGE_BTR_SEG_OWN, mtr);
+
+			if (left_block == NULL) {
+				/* NOTE: Code should never reach here as we already reserved enough
+				 * free space before this funciton call */
+				return(DB_OUT_OF_FILE_SPACE);
+			}
+
+			left_block = btr_child_pages_reallocation(
+			    left_block, page_get_infimum_rec(buf_block_get_frame(left_block)),
+			    page_get_supremum_rec(buf_block_get_frame(left_block)),
+			    cursor->index,
+			    buf_block_get_frame(right_block) + PAGE_HEADER + PAGE_BTR_SEG_OWN , mtr);
+
+			if (left_block == NULL){
+				return(DB_OUT_OF_FILE_SPACE);
+			}
+
+		} else {
+			/* Create File Segment for new parent created after split */
+
+			right_block = fseg_create(cursor->index->space,
+						  buf_block_get_page_no(right_block),
+						  PAGE_HEADER + PAGE_BTR_SEG_OWN, mtr);
+
+			if (right_block == NULL) {
+				/* NOTE: Code should never reach here as we already reserved enough
+				 * free space before this funciton call */
+				return(DB_OUT_OF_FILE_SPACE);
+			}
+
+			right_block = btr_child_pages_reallocation(
+			    right_block, page_get_infimum_rec(buf_block_get_frame(right_block)),
+			    page_get_supremum_rec(buf_block_get_frame(right_block)),
+			    cursor->index,
+			    buf_block_get_frame(left_block) + PAGE_HEADER + PAGE_BTR_SEG_OWN, mtr);
+
+			if (right_block == NULL){
+				return(DB_OUT_OF_FILE_SPACE);
+			}
+		}
+	}
+
+	/* Do the modifications in the tree structure
+	 * Recursive call to upwards on tree*/
+
+	btr_attach_half_pages(flags, cursor->index, left_block,
+			      right_block, direction, mtr);
+
+
+	if (insert_will_fit && page_is_leaf(page)
+	    && !dict_index_is_online_ddl(cursor->index)) {
+		mtr_memo_release(mtr, dict_index_get_lock(cursor->index),
+				 MTR_MEMO_X_LOCK);
+	}
+
+
 	/* Insert fit on the page: update the free bits for the
 	left and right pages in the same mtr */
 
@@ -4133,11 +4253,11 @@ func_exit:
 	ut_ad(page_validate(buf_block_get_frame(left_block), cursor->index));
 	ut_ad(page_validate(buf_block_get_frame(right_block), cursor->index));
 
-	if (tuple == NULL) {
-		ut_ad(rec == NULL);
-	}
-	ut_ad(!rec || rec_offs_validate(rec, cursor->index, *offsets));
-	return(rec);
+//	if (tuple == NULL) {
+//		ut_ad(rec == NULL);
+//	}
+//	ut_ad(!rec || rec_offs_validate(rec, cursor->index, *offsets));
+	return(DB_SUCCESS);
 }
 
 /*************************************************************//**
@@ -4597,7 +4717,7 @@ btr_compress(
 
 	/* Move records to the merge page */
 	if (is_left) {
-		rec_t*	limit_rec = btr_get_prev_user_rec(page_get_supremum_rec(merge_page), mtr);
+		rec_t*	start_rec = btr_get_prev_user_rec(page_get_supremum_rec(merge_page), mtr);
 		rec_t*	orig_pred = page_copy_rec_list_start(
 			merge_block, block, page_get_supremum_rec(page),
 			index, mtr);
@@ -4611,7 +4731,8 @@ btr_compress(
 
 		if ((!dict_index_is_ibuf(index)) && (!page_is_leaf(merge_page))) {
 			merge_block = btr_child_pages_reallocation(
-			    merge_block, limit_rec, FALSE, index, mtr);
+			    merge_block, start_rec, page_get_supremum_rec(merge_page), index,
+			    page + PAGE_HEADER + PAGE_BTR_SEG_OWN, mtr);
 		}
 
 		btr_search_drop_page_hash_index(block);
@@ -4676,7 +4797,8 @@ btr_compress(
 
 		if ((!dict_index_is_ibuf(index)) && (!page_is_leaf(merge_page))) {
 			merge_block = btr_child_pages_reallocation(
-			    merge_block, limit_rec, TRUE, index, mtr);
+			    merge_block, page_get_infimum_rec(merge_page), limit_rec,
+			    index, page + PAGE_HEADER + PAGE_BTR_SEG_OWN, mtr);
 		}
 
 		btr_search_drop_page_hash_index(block);
@@ -4940,8 +5062,9 @@ btr_discard_page(
 	ut_a(page_is_comp(merge_page) == page_is_comp(page));
 	btr_search_drop_page_hash_index(block);
 
-	if (left_page_no == FIL_NULL && !page_is_leaf(page)) {
-
+	if ((left_page_no == FIL_NULL ||
+	     dict_index_get_page(index) == page_get_page_no(page)) &&
+	    !page_is_leaf(page)) {
 		/* We have to mark the leftmost node pointer on the right
 		side page as the predefined minimum record */
 		node_ptr = page_rec_get_next(page_get_infimum_rec(merge_page));

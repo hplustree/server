@@ -192,6 +192,7 @@ buf_dblwr_create()
 	ulint	prev_page_no;
 	ulint	i;
 	mtr_t	mtr;
+	ulint	reserved;
 
 	if (buf_dblwr) {
 		/* Already inited */
@@ -275,7 +276,7 @@ too_small:
 //		new_block = fseg_alloc_free_tpage(
 //			fseg_header, prev_page_no + 1, FSP_UP, &mtr);
 		new_block = fseg_alloc_free_page(
-		    fseg_header, prev_page_no + 1, rel_offset, &mtr);
+		    fseg_header, prev_page_no + 1, rel_offset, &reserved, &mtr);
 		if (new_block == NULL) {
 			ib_logf(IB_LOG_LEVEL_FATAL,
 				"Cannot create doublewrite buffer: you must "

@@ -622,8 +622,9 @@ file space fragmentation.
 @return	X-latched block, or NULL if no page could be allocated */
 
 /* direction parameter is not needed now */
-#define fseg_alloc_free_page(seg_header, hint, rel_offset, mtr)		\
-	fseg_alloc_free_page_general(seg_header, hint, FALSE, rel_offset, mtr, mtr)
+#define fseg_alloc_free_page(seg_header, hint, rel_offset, reserved, mtr) \
+	fseg_alloc_free_page_general(seg_header, hint, FALSE, rel_offset, \
+				     reserved, mtr, mtr)
 /**********************************************************************//**
 Allocates a single free page from a segment. This function implements
 the intelligent allocation strategy which tries to minimize file space
@@ -647,6 +648,7 @@ fseg_alloc_free_page_general(
 				is no need to do the check for this individual
 				page */
     	ulint*		rel_offset,/*!< in/out: relative offset of index page or NULL */
+	ulint*		reserved, /*!<in/out: number of reserved pages */
 	mtr_t*		mtr,	/*!< in/out: mini-transaction */
 	mtr_t*		init_mtr)/*!< in/out: mtr or another mini-transaction
 				in which the page should be initialized.
