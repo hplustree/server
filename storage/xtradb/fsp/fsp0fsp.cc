@@ -626,10 +626,9 @@ xdes_get_rel_offset(
 
 	rel_offset = mach_read_from_2(alloc_page + PAGE_HEADER + PAGE_REL_OFFSET);
 
-	extent_pos = (rel_offset - FSEG_FRAG_ARR_N_SLOTS) / FSP_EXTENT_SIZE;
+	extent_pos = (rel_offset + FSEG_FRAG_ARR_N_SLOTS) / FSP_EXTENT_SIZE;
 
-	return ((extent_pos * FSP_EXTENT_SIZE) + FSEG_FRAG_ARR_N_SLOTS);
-
+    return (((extent_pos-1) * FSP_EXTENT_SIZE) + FSEG_FRAG_ARR_N_SLOTS);
 }
 #endif /* !UNIV_HOTBACKUP */
 
@@ -2707,7 +2706,7 @@ fseg_get_abs_offset(
 		latch = fil_space_get_latch(space, &flags);
 		mtr_x_lock(latch, &mtr2);
 
-		extent_pos = (rel_offset - FSEG_FRAG_ARR_N_SLOTS) / FSP_EXTENT_SIZE;
+		extent_pos = (rel_offset + FSEG_FRAG_ARR_N_SLOTS) / FSP_EXTENT_SIZE;
 
 		ut_ad (flst_get_len(inode + FSEG_EXTENT, mtr) >= extent_pos);
 		ut_ad(mtr_memo_contains(&mtr2, fil_space_get_latch(space, NULL),
@@ -2716,7 +2715,7 @@ fseg_get_abs_offset(
 		descr = xdes_lst_get_descriptor(space, zip_size,
 						flst_get_first(inode + FSEG_EXTENT, mtr), &mtr2);
 
-		for (ulint i=0 ; i < extent_pos ; i++){
+		for (ulint i=1 ; i < extent_pos ; i++){
 			fil_addr_t next = flst_get_next_addr(descr + XDES_FLST_NODE, &mtr2);
 			descr = xdes_lst_get_descriptor(space, zip_size, next, &mtr2);
 		}

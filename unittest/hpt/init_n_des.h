@@ -59,11 +59,14 @@ long innobase_file_io_threads = 4;
 long innobase_read_io_threads = 4;
 long innobase_write_io_threads = 4;
 long innobase_force_recovery = 0;
-long innobase_log_buffer_size = 1024L;
+long innobase_log_buffer_size = 1024L;  /* For 16kb page size */
+//long innobase_log_buffer_size = 4096L;  /* For 4kb page size */
 long innobase_log_files_in_group = 2;
 long innobase_open_files = 300L;
 
 longlong innobase_page_size = (1LL << 14); /* 16KB */
+//longlong innobase_page_size = (1LL << 12); /* 4KB */
+
 static ulong innobase_log_block_size = 512;
 
 longlong innobase_log_file_size = 48*1024*1024L;

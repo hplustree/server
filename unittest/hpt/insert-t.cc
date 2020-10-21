@@ -3,7 +3,6 @@
 //
 
 #include "init_n_des.h"
-
 #include <dict0boot.h>
 #include <que0que.h>
 #include <trx0trx.h>
@@ -49,7 +48,7 @@ void test_create_table_index(dict_index_t *index, dict_table_t *table,
     // create table test (id int, name int);
 
     ulint type = DICT_CLUSTERED;
-    ulint space = 100;
+    ulint space = 150;
     ulint zip_size = 0;
     ulint n_fields = 0;
     ulint n_cols = 2;
@@ -115,7 +114,7 @@ void test_create_table_index_with_primary_key(dict_index_t *index, dict_table_t 
     // create table test (id int primary key, name int);
 
     ulint type = DICT_CLUSTERED | DICT_UNIQUE;
-    ulint space = 100;
+    ulint space = 150;
     ulint zip_size = 0;
     ulint n_fields = 1;
     ulint n_cols = 2;
@@ -1643,6 +1642,7 @@ fprintf(stderr, " cnt %lu ret value %lu err\n", cnt, err); */
 
 void test_search(row_prebuilt_t* pre_built, std::vector<ulint> entries) {
 
+    ulint count=0;
     const ulint key_len = 4;
     ulint mode = PAGE_CUR_GE;   //HA_READ_KEY_EXACT
     ulint match_mode = ROW_SEL_EXACT;
@@ -1718,12 +1718,13 @@ void test_search(row_prebuilt_t* pre_built, std::vector<ulint> entries) {
             value2 |= buf[j+key_len] << (8*(3-j));
 
         ut_ad(value1 == entries[i] && value2 == entries[i]*10);
+        count++;
 
     }
 
     std::time_t end_time = time(nullptr);
     std::cout << "\ntime taken for reading: " << (end_time - start_time) / 60 << " m "
-              << (end_time - start_time) % 60 << " s\n";
+              << (end_time - start_time) % 60 << " s\nentries:"<< count<<"\n";
 
     ok(ret == dberr_t::DB_SUCCESS, "read successful");
 
@@ -1747,7 +1748,7 @@ int main(int argc __attribute__((unused)), char *argv[]) {
     test_create_table_index_with_primary_key(&index, &table, (char *) table_name);
 
     // test: insert operation
-    ulint length = 10000;
+    ulint length = 2000000;
     std::vector<ulint> entries = prepare_data(length);
 
     row_prebuilt_t* pre_built = test_insert(&index, &table, entries);
