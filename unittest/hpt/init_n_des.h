@@ -59,13 +59,11 @@ long innobase_file_io_threads = 4;
 long innobase_read_io_threads = 4;
 long innobase_write_io_threads = 4;
 long innobase_force_recovery = 0;
-long innobase_log_buffer_size = 1024L;  /* For 16kb page size */
-//long innobase_log_buffer_size = 4096L;  /* For 4kb page size */
+long innobase_log_buffer_size;
 long innobase_log_files_in_group = 2;
 long innobase_open_files = 300L;
 
-longlong innobase_page_size = (1LL << 14); /* 16KB */
-//longlong innobase_page_size = (1LL << 12); /* 4KB */
+longlong innobase_page_size;
 
 static ulong innobase_log_block_size = 512;
 
@@ -559,7 +557,17 @@ check_if_skip_database_by_path(
 }
 
 
-my_bool setup(){
+my_bool setup(longlong page_size){
+
+  innobase_page_size = page_size;
+
+  if(page_size == 1L << 14) {
+    innobase_log_buffer_size = 1024L; /* For 16kb page size */
+  }
+  else if(page_size == 1L << 12) {
+    innobase_log_buffer_size = 4096L; /* For 4kb page size */
+  }
+
   /* Setup skip fil_load_single_tablespaces callback.*/
   fil_check_if_skip_database_by_path = check_if_skip_database_by_path;
 

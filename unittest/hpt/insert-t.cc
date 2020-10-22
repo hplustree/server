@@ -1737,8 +1737,9 @@ int main(int argc __attribute__((unused)), char *argv[]) {
     // count is the number of tests to run in this file
     plan(4);
 
+    longlong page_size = 1LL << 12; //test page_size 4KB
     // setup
-    setup();
+    setup(page_size);
 
     // test1: create tablespace
     const char *table_name = "test";
@@ -1748,7 +1749,7 @@ int main(int argc __attribute__((unused)), char *argv[]) {
     test_create_table_index_with_primary_key(&index, &table, (char *) table_name);
 
     // test: insert operation
-    ulint length = 2000000;
+    ulint length = 100000;
     std::vector<ulint> entries = prepare_data(length);
 
     row_prebuilt_t* pre_built = test_insert(&index, &table, entries);
