@@ -2936,7 +2936,8 @@ fseg_alloc_free_page_low(
 	    seg_inode + FSEG_NEXT_FREE)) != FIL_NULL) &&
 		   !!(ret_descr = xdes_get_descriptor_with_space_hdr(
 		       space_header, space, free_page_no, mtr)) &&
-		   xdes_get_state(ret_descr, mtr) == XDES_FSEG) {
+		   xdes_get_state(ret_descr, mtr) == XDES_FSEG &&
+		   mach_read_from_8(ret_descr + XDES_ID) == seg_id) {
 		/* 5. We take next page in extent
 		==============================================*/
 
