@@ -1737,11 +1737,8 @@ int main(int argc __attribute__((unused)), char *argv[]) {
     // count is the number of tests to run in this file
     plan(4);
 
-    longlong page_size = 1LL << 12; //test page_size 4KB
-    longlong buffer_pool_size = (100 * 1024 * 1024); // 100M bufferpool size
-
     // setup
-    setup(page_size, buffer_pool_size);
+    setup(); //test with default page_size 4KB, 100M bufferpool size
 
     // test1: create tablespace
     const char *table_name = "test";
