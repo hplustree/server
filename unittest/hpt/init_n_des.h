@@ -36,7 +36,7 @@ innodb_log_checksum_func_update(
 /** declare and define local (to this file) variables */
 
 /* === ssytem specific options (TODO: are not used directly) === */
-longlong buf_pool_size = 100*1024*1024L;
+longlong buf_pool_size;
 static hash_table_t* databases_include_hash = NULL;
 static hash_table_t* databases_exclude_hash = NULL;
 
@@ -187,6 +187,7 @@ static void init_innodb_data_home_dir(void){
   default_path = current_dir;
 
   srv_data_home = (innobase_data_home_dir ? innobase_data_home_dir : default_path);
+  printf("InnoDB: buffer pool size is %lldM\n", buf_pool_size/1024/1024);
   printf("InnoDB: innodb_data_home_dir = %s\n", srv_data_home);
 }
 
@@ -557,7 +558,7 @@ check_if_skip_database_by_path(
 }
 
 
-my_bool setup(longlong page_size){
+my_bool setup(longlong page_size, longlong buffer_pool_size){
 
   innobase_page_size = page_size;
 
@@ -567,6 +568,8 @@ my_bool setup(longlong page_size){
   else if(page_size == 1L << 12) {
     innobase_log_buffer_size = 4096L; /* For 4kb page size */
   }
+
+  buf_pool_size = buffer_pool_size;
 
   /* Setup skip fil_load_single_tablespaces callback.*/
   fil_check_if_skip_database_by_path = check_if_skip_database_by_path;

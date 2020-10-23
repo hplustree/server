@@ -1738,8 +1738,10 @@ int main(int argc __attribute__((unused)), char *argv[]) {
     plan(4);
 
     longlong page_size = 1LL << 12; //test page_size 4KB
+    longlong buffer_pool_size = (100 * 1024 * 1024); // 100M bufferpool size
+
     // setup
-    setup(page_size);
+    setup(page_size, buffer_pool_size);
 
     // test1: create tablespace
     const char *table_name = "test";
