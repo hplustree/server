@@ -558,7 +558,7 @@ check_if_skip_database_by_path(
 }
 
 
-my_bool setup(longlong page_size = 1LL << 12, longlong buffer_pool_size = 100 * 1024 * 1024){
+my_bool setup(longlong page_size = 1LL << 14, longlong buffer_pool_size = 100 * 1024 * 1024){
 
   innobase_page_size = page_size;
 

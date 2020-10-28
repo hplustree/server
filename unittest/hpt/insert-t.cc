@@ -1738,7 +1738,9 @@ int main(int argc __attribute__((unused)), char *argv[]) {
     plan(4);
 
     // setup
-    setup(); //test with default page_size 4KB, 100M bufferpool size
+    setup(4096, 1024*1024*100);
+//    setup(); //test with default page_size 16KB, 100M bufferpool size
+
 
     // test1: create tablespace
     const char *table_name = "test";
@@ -1748,7 +1750,7 @@ int main(int argc __attribute__((unused)), char *argv[]) {
     test_create_table_index_with_primary_key(&index, &table, (char *) table_name);
 
     // test: insert operation
-    ulint length = 100000;
+    ulint length = 1000000;
     std::vector<ulint> entries = prepare_data(length);
 
     row_prebuilt_t* pre_built = test_insert(&index, &table, entries);

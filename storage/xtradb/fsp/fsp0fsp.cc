@@ -2839,7 +2839,11 @@ fseg_alloc_free_page_low(
 //				ut_ad(*rel_offset);
 
 			}
+			else{
+			    goto allocate_page;
+			}
 		} else {
+		    allocate_page:
 			fseg_page_alloc_get_rel_offset(
 			    rel_offset, FSEG_PAGE_FROM_ANY_EXTENT, NULL, ret_descr,
 			    ret_page, FIL_NULL, seg_inode, space, zip_size, mtr);
