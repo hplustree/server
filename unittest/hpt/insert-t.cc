@@ -43,7 +43,7 @@
 // see this function to populate data tuple of innodb - row_mysql_store_col_in_innobase_format()
 
 void test_create_table_index(dict_index_t *index, dict_table_t *table,
-                            char *table_name) {
+                             char *table_name) {
 
     // create table test (id int, name int);
 
@@ -109,7 +109,7 @@ void test_create_table_index(dict_index_t *index, dict_table_t *table,
 }
 
 void test_create_table_index_with_primary_key(dict_index_t *index, dict_table_t *table,
-                            char *table_name) {
+                                              char *table_name) {
 
     // create table test (id int primary key, name int);
 
@@ -190,10 +190,9 @@ void test_create_table_index_with_primary_key(dict_index_t *index, dict_table_t 
 }
 
 
-row_prebuilt_t* test_insert(dict_index_t *index, dict_table_t *table,
+row_prebuilt_t *test_insert(dict_index_t *index, dict_table_t *table,
                             std::vector<ulint> entries) {
 
-    btr_cur_t cursor;
     ulint *offsets = NULL;
     rec_t *rec;
     que_thr_t *que_thr = NULL;
@@ -206,7 +205,7 @@ row_prebuilt_t* test_insert(dict_index_t *index, dict_table_t *table,
     trx_t *user_trx = trx_allocate_for_background();
 
     row_prebuilt_t *pre_built = row_create_prebuilt(table, mysql_row_len);
-    pre_built->default_rec = (unsigned char*)"\xff\x00\x00\x00\x00\x00\x00\x00\x00";
+    pre_built->default_rec = (unsigned char *) "\xff\x00\x00\x00\x00\x00\x00\x00\x00";
     pre_built->trx = user_trx;
 
     pre_built->n_template = 2;
@@ -228,6 +227,7 @@ row_prebuilt_t* test_insert(dict_index_t *index, dict_table_t *table,
 
     for (ulint i = 0; i < data_len; i++) {
 
+        btr_cur_t cursor;
         trx_start_if_not_started_xa(pre_built->trx);
 
         mtr_start(&mtr);
@@ -353,7 +353,7 @@ std::vector<ulint> prepare_data(ulint length) {
     std::vector<ulint> entries(length);
 
     for (ulint i = 0; i < length; i++) {
-        entries[i] = i+1;
+        entries[i] = i + 1;
     }
 
     std::shuffle(entries.begin(), entries.end(), std::default_random_engine(seed));
@@ -362,9 +362,8 @@ std::vector<ulint> prepare_data(ulint length) {
 }
 
 dberr_t
-search_index(byte* buf, ulint mode, row_prebuilt_t*	prebuilt,
-            ulint match_mode, ulint direction)
-{
+search_index(byte *buf, ulint mode, row_prebuilt_t *prebuilt,
+             ulint match_mode, ulint direction) {
     dict_index_t *index = prebuilt->index;
     ibool comp = dict_table_is_comp(index->table);
     const dtuple_t *search_tuple = prebuilt->search_tuple;
@@ -518,8 +517,8 @@ search_index(byte* buf, ulint mode, row_prebuilt_t*	prebuilt,
         columns because we demand that all the columns in primary key
         are non-null. */
 
-            unique_search = TRUE;
-        }
+        unique_search = TRUE;
+    }
 
     mtr_start(&mtr);
 
@@ -1362,9 +1361,9 @@ search_index(byte* buf, ulint mode, row_prebuilt_t*	prebuilt,
 
         result_rec = clust_rec;
         ut_ad(rec_offs_validate(result_rec, clust_index, offsets));
-    } else{
+    } else {
         use_covering_index:
-            result_rec = rec;
+        result_rec = rec;
     }
     /* We found a qualifying record 'result_rec'. At this point,
 	'offsets' are associated with 'result_rec'. */
@@ -1476,7 +1475,7 @@ search_index(byte* buf, ulint mode, row_prebuilt_t*	prebuilt,
     }
 
 #ifdef UNIV_SEARCH_DEBUG
-        cnt++;
+    cnt++;
 #endif /* UNIV_SEARCH_DEBUG */
 
     goto rec_loop;
@@ -1625,10 +1624,10 @@ fprintf(stderr, " cnt %lu ret value %lu err\n", cnt, err); */
     DEBUG_SYNC_C("innodb_row_search_for_mysql_exit");
 
     // we will exclude trx_id and roll_ptr data from result record for final output
-    for(ulint i=0; i<4;i++)
+    for (ulint i = 0; i < 4; i++)
         buf[i] = (byte) result_rec[i];
-    for(ulint i=4; i<8;i++)
-        buf[i] = (byte)result_rec[13+i];
+    for (ulint i = 4; i < 8; i++)
+        buf[i] = (byte) result_rec[13 + i];
 
     // convert sign bit to normal
     buf[0] = (byte) (buf[0] ^ 128);
@@ -1636,24 +1635,24 @@ fprintf(stderr, " cnt %lu ret value %lu err\n", cnt, err); */
 
     trx_commit_for_mysql(prebuilt->trx);
 
-    return(err);
+    return (err);
 }
 
 
-void test_search(row_prebuilt_t* pre_built, std::vector<ulint> entries) {
+void test_search(row_prebuilt_t *pre_built, std::vector<ulint> entries) {
 
-    ulint count=0;
+    ulint count = 0;
     const ulint key_len = 4;
     ulint mode = PAGE_CUR_GE;   //HA_READ_KEY_EXACT
     ulint match_mode = ROW_SEL_EXACT;
     ulint data_len = entries.size();
-    uchar buf[8] = {'\x00','\x00','\x00','\x00','\x00','\x00','\x00','\x00'};
+    uchar buf[8] = {'\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00'};
     dberr_t ret;
     trx_t *user_trx = trx_allocate_for_background();
 
     pre_built->trx = user_trx;
 
-    dict_index_t* index = pre_built->index;
+    dict_index_t *index = pre_built->index;
 
     if (UNIV_UNLIKELY(index == NULL) || dict_index_is_corrupted(index)) {
         pre_built->index_usable = FALSE;
@@ -1672,8 +1671,8 @@ void test_search(row_prebuilt_t* pre_built, std::vector<ulint> entries) {
 
     pre_built->need_to_access_clustered = 1;
 
-    for(ulint j=0;j<pre_built->n_template;j++) {
-        mysql_row_templ_t* templ = pre_built->mysql_template + j;
+    for (ulint j = 0; j < pre_built->n_template; j++) {
+        mysql_row_templ_t *templ = pre_built->mysql_template + j;
         if (pre_built->mysql_prefix_len < templ->mysql_col_offset
                                           + templ->mysql_col_len) {
             pre_built->mysql_prefix_len = templ->mysql_col_offset
@@ -1687,13 +1686,14 @@ void test_search(row_prebuilt_t* pre_built, std::vector<ulint> entries) {
                           pre_built->index->n_fields);
     pre_built->search_tuple->fields->type.prtype = 1283;
 
+    unsigned char key_ptr[key_len];
+
     std::time_t start_time = time(nullptr);
 
-    for (ulint i=0;i<data_len;i++) {
+    for (ulint i = 0; i < data_len; i++) {
 
         pre_built->sql_stat_start = TRUE;
 
-        unsigned char key_ptr[key_len];
         for (ulint l = 0; l < key_len; l++)
             key_ptr[l] = (entries[i] >> (l * 8));
 
@@ -1702,29 +1702,29 @@ void test_search(row_prebuilt_t* pre_built, std::vector<ulint> entries) {
                 pre_built->srch_key_val1,
                 pre_built->srch_key_val_len,
                 index,
-                (byte*) key_ptr,
+                (byte *) key_ptr,
                 key_len,
                 pre_built->trx);
         ut_ad(pre_built->search_tuple->n_fields > 0);
 
-        ret = search_index((byte*) buf, mode, pre_built, match_mode, 0);
-        ut_ad(ret==dberr_t::DB_SUCCESS);
+        ret = search_index((byte *) buf, mode, pre_built, match_mode, 0);
+        ut_ad(ret == dberr_t::DB_SUCCESS);
 
-        ulint value1=0, value2=0;
-        for (ulint j=0;j<key_len;j++)
-            value1 |= buf[j] << (8*(3-j));
+        ulint value1 = 0, value2 = 0;
+        for (ulint j = 0; j < key_len; j++)
+            value1 |= buf[j] << (8 * (3 - j));
 
-        for (ulint j=0;j<key_len;j++)
-            value2 |= buf[j+key_len] << (8*(3-j));
+        for (ulint j = 0; j < key_len; j++)
+            value2 |= buf[j + key_len] << (8 * (3 - j));
 
-        ut_ad(value1 == entries[i] && value2 == entries[i]*10);
+        ut_ad(value1 == entries[i] && value2 == entries[i] * 10);
         count++;
 
     }
 
     std::time_t end_time = time(nullptr);
     std::cout << "\ntime taken for reading: " << (end_time - start_time) / 60 << " m "
-              << (end_time - start_time) % 60 << " s\nentries:"<< count<<"\n";
+              << (end_time - start_time) % 60 << " s\nentries:" << count << "\n";
 
     ok(ret == dberr_t::DB_SUCCESS, "read successful");
 
@@ -1738,7 +1738,7 @@ int main(int argc __attribute__((unused)), char *argv[]) {
     plan(4);
 
     // setup
-    setup(4096, 1024*1024*100);
+    setup(4096, 1024 * 1024 * 100);
 //    setup(); //test with default page_size 16KB, 100M bufferpool size
 
 
@@ -1753,13 +1753,12 @@ int main(int argc __attribute__((unused)), char *argv[]) {
     ulint length = 1000000;
     std::vector<ulint> entries = prepare_data(length);
 
-    row_prebuilt_t* pre_built = test_insert(&index, &table, entries);
+    row_prebuilt_t *pre_built = test_insert(&index, &table, entries);
     pre_built->index = &index;
     pre_built->index_usable = TRUE;
 
     test_search(pre_built, entries);
 
-   
 
     destroy();
 

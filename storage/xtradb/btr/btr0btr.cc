@@ -4717,7 +4717,8 @@ btr_compress(
 
 	/* Move records to the merge page */
 	if (is_left) {
-		rec_t*	start_rec = btr_get_prev_user_rec(page_get_supremum_rec(merge_page), mtr);
+		const rec_t* start_rec = btr_get_prev_user_rec(
+		        page_get_supremum_rec(merge_page), mtr);
 		rec_t*	orig_pred = page_copy_rec_list_start(
 			merge_block, block, page_get_supremum_rec(page),
 			index, mtr);
@@ -4731,7 +4732,7 @@ btr_compress(
 
 		if ((!dict_index_is_ibuf(index)) && (!page_is_leaf(merge_page))) {
 			merge_block = btr_child_pages_reallocation(
-			    merge_block, start_rec, page_get_supremum_rec(merge_page), index,
+			    merge_block, (rec_t*)start_rec, page_get_supremum_rec(merge_page), index,
 			    page + PAGE_HEADER + PAGE_BTR_SEG_OWN, mtr);
 		}
 
@@ -4750,9 +4751,10 @@ btr_compress(
 		rec_t*		orig_succ;
 		ibool		compressed;
 		dberr_t		err;
-		btr_cur_t	cursor2;
-					/* father cursor pointing to node ptr
-					of the right sibling */
+		btr_cur_t	cursor2;    /* father cursor pointing to node ptr
+					            of the right sibling */
+		const rec_t*      limit_rec;
+
 #ifdef UNIV_BTR_DEBUG
 		byte		fil_page_prev[4];
 #endif /* UNIV_BTR_DEBUG */
@@ -4774,7 +4776,7 @@ btr_compress(
 			memset(merge_page + FIL_PAGE_PREV, 0xff, 4);
 		}
 
-		rec_t* 	limit_rec = btr_get_next_user_rec(page_get_infimum_rec(merge_page), mtr);
+		limit_rec = btr_get_next_user_rec(page_get_infimum_rec(merge_page), mtr);
 		orig_succ = page_copy_rec_list_end(merge_block, block,
 						   page_get_infimum_rec(page),
 						   cursor->index, mtr);
@@ -4797,7 +4799,7 @@ btr_compress(
 
 		if ((!dict_index_is_ibuf(index)) && (!page_is_leaf(merge_page))) {
 			merge_block = btr_child_pages_reallocation(
-			    merge_block, page_get_infimum_rec(merge_page), limit_rec,
+			    merge_block, page_get_infimum_rec(merge_page), (rec_t*)limit_rec,
 			    index, page + PAGE_HEADER + PAGE_BTR_SEG_OWN, mtr);
 		}
 

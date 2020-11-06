@@ -887,6 +887,10 @@ retry_page_get:
 			goto retry_page_get;
 		}
 
+		// changes required
+        low_bytes = 0;
+		up_bytes = 0;
+
 		goto search_loop;
 	}
 

@@ -2898,7 +2898,8 @@ fseg_alloc_free_page_low(
 			n = fseg_find_free_frag_page_slot(seg_inode, mtr);
 			ut_a(n != ULINT_UNDEFINED);
 
-			fseg_set_nth_frag_page_no(seg_inode, n, buf_block_get_page_no(block),mtr);
+			ulint frag_page_no = buf_block_get_page_no(block);
+			fseg_set_nth_frag_page_no(seg_inode, n, frag_page_no, mtr);
 
 			fseg_page_alloc_get_rel_offset(
 			    rel_offset, FSEG_PAGE_FROM_FRAG_ARR, NULL, NULL,
