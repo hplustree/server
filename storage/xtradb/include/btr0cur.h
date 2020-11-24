@@ -519,6 +519,35 @@ btr_cur_pessimistic_delete(
 	mtr_t*		mtr)	/*!< in: mtr */
 	MY_ATTRIBUTE((nonnull));
 #endif /* !UNIV_HOTBACKUP */
+/*************************************************************//**
+Removes the record on which the tree cursor is positioned. Tries
+to compress the page if its fillfactor drops below a threshold
+or if it is the only page on the level. It is assumed that mtr holds
+an x-latch on the tree and on the cursor page. To avoid deadlocks,
+mtr must also own x-latches to brothers of page, if those brothers
+exist.
+@return	TRUE if compression occurred */
+UNIV_INTERN
+ibool
+btr_cur_pessimistic_delete_without_merge(
+/*=======================*/
+    dberr_t*		err,	/*!< out: DB_SUCCESS or DB_OUT_OF_FILE_SPACE;
+				the latter may occur because we may have
+				to update node pointers on upper levels,
+				and in the case of variable length keys
+				these may actually grow in size */
+    ibool		has_reserved_extents, /*!< in: TRUE if the
+				caller has already reserved enough free
+				extents so that he knows that the operation
+				will succeed */
+    btr_cur_t*	cursor,	/*!< in: cursor on the record to delete;
+				if compression does not occur, the cursor
+				stays valid: it points to successor of
+				deleted record on function exit */
+    ulint		flags,	/*!< in: BTR_CREATE_FLAG or 0 */
+    enum trx_rb_ctx	rb_ctx,	/*!< in: rollback context */
+    mtr_t*		mtr)	/*!< in: mtr */
+MY_ATTRIBUTE((nonnull));
 /***********************************************************//**
 Parses a redo log record of updating a record in-place.
 @return	end of log record or NULL */

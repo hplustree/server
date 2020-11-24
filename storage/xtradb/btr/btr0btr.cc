@@ -3359,8 +3359,13 @@ btr_insert_into_right_sibling(
 	ut_ad(mtr_memo_contains(mtr, block, MTR_MEMO_PAGE_X_FIX));
 	ut_ad(heap);
 
+	/* Problem - On non leaf level, it adds node pointer record into right sibling page,
+	 * but its rel-abs mapping is not available with file segment. */
+
+	/* Changed - Not to insert node pointer using right sibling insert for non-leaf level*/
 	if (next_page_no == FIL_NULL || !page_rec_is_supremum(
-			page_rec_get_next(btr_cur_get_rec(cursor)))) {
+			page_rec_get_next(btr_cur_get_rec(cursor))) ||
+	    btr_page_get_level(btr_cur_get_page(cursor), mtr) !=0 ) {
 
 		return(NULL);
 	}
@@ -3419,15 +3424,24 @@ btr_insert_into_right_sibling(
 
 	/* We have to change the parent node pointer */
 
-	compressed = btr_cur_pessimistic_delete(
+	/* Problem:- It deletes node pointer and tries to merge pages. If merge page already
+	   contains rel offset in node pointer record, same as rel offset that is going to insert
+	   after merge page. Then merge page will have two node pointer with same rel offset. */
+
+	/* Changed:- Don't tries to merge page during delete. Once delete and insert operation
+	   is done then after tries to merge page. So insert the node pointer record before merge.
+	   During merge it re allocates child pages and changes rel offset of node pointer. So
+	   merge page doesn't contains two node pointer with same rel offset. */
+
+	compressed = btr_cur_pessimistic_delete_without_merge(
 		&err, TRUE, &next_father_cursor,
 		BTR_CREATE_FLAG, RB_NONE, mtr);
 
 	ut_a(err == DB_SUCCESS);
 
-	if (!compressed) {
-		btr_cur_compress_if_useful(&next_father_cursor, FALSE, mtr);
-	}
+//	if (!compressed) {
+//		btr_cur_compress_if_useful(&next_father_cursor, FALSE, mtr);
+//	}
 
 	dtuple_t*	node_ptr = dict_index_build_node_ptr(
 	    cursor->index, rec, btr_page_get_rel_offset(next_block),
@@ -3439,6 +3453,10 @@ btr_insert_into_right_sibling(
 
 	btr_insert_on_non_leaf_level(
 		flags, cursor->index, level + 1, node_ptr, mtr);
+
+	if (!compressed) {
+		btr_cur_compress_if_useful(&next_father_cursor, FALSE, mtr);
+	}
 
 	ut_ad(rec_offs_validate(rec, cursor->index, *offsets));
 
@@ -4117,7 +4135,12 @@ func_exit:
 			return(DB_OUT_OF_FILE_SPACE);
 		}
 
-		ut_ad(page_rec_get_next(btr_cur_get_rec(cursor)) == rec);
+		/* Problem - In the case of insert into right sibling it tries to merge pages and reallocate pages
+		 * So memory position of inserted rec may change. Its not possible that next of cursor
+		 * points to rec. */
+
+		/* Changed - remove assertion check */
+//		ut_ad(page_rec_get_next(btr_cur_get_rec(cursor)) == rec);
 
 		if (!(flags & BTR_NO_LOCKING_FLAG)) {
 			/* The cursor might be moved to the other page,

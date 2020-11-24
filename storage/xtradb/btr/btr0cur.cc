@@ -3819,7 +3819,178 @@ return_after_reservations:
 
 	return(ret);
 }
+/*************************************************************//**
+Removes the record on which the tree cursor is positioned. Tries
+to compress the page if its fillfactor drops below a threshold
+or if it is the only page on the level. It is assumed that mtr holds
+an x-latch on the tree and on the cursor page. To avoid deadlocks,
+mtr must also own x-latches to brothers of page, if those brothers
+exist.
+@return	TRUE if compression occurred */
+UNIV_INTERN
+ibool
+btr_cur_pessimistic_delete_without_merge(
+/*=======================*/
+    dberr_t*	err,	/*!< out: DB_SUCCESS or DB_OUT_OF_FILE_SPACE;
+				the latter may occur because we may have
+				to update node pointers on upper levels,
+				and in the case of variable length keys
+				these may actually grow in size */
+    ibool		has_reserved_extents, /*!< in: TRUE if the
+				caller has already reserved enough free
+				extents so that he knows that the operation
+				will succeed */
+    btr_cur_t*	cursor,	/*!< in: cursor on the record to delete;
+				if compression does not occur, the cursor
+				stays valid: it points to successor of
+				deleted record on function exit */
+    ulint		flags,	/*!< in: BTR_CREATE_FLAG or 0 */
+    enum trx_rb_ctx	rb_ctx,	/*!< in: rollback context */
+    mtr_t*		mtr)	/*!< in: mtr */
+{
+	buf_block_t*	block;
+	page_t*		page;
+	page_zip_des_t*	page_zip;
+	dict_index_t*	index;
+	rec_t*		rec;
+	ulint		n_reserved	= 0;
+	ibool		success;
+	ibool		ret		= FALSE;
+	mem_heap_t*	heap;
+	ulint*		offsets;
 
+	block = btr_cur_get_block(cursor);
+	page = buf_block_get_frame(block);
+	index = btr_cur_get_index(cursor);
+
+	ut_ad(flags == 0 || flags == BTR_CREATE_FLAG);
+	ut_ad(!dict_index_is_online_ddl(index)
+	      || dict_index_is_clust(index)
+	      || (flags & BTR_CREATE_FLAG));
+	ut_ad(mtr_memo_contains(mtr, dict_index_get_lock(index),
+				MTR_MEMO_X_LOCK));
+	ut_ad(mtr_memo_contains(mtr, block, MTR_MEMO_PAGE_X_FIX));
+	if (!has_reserved_extents) {
+		/* First reserve enough free space for the file segments
+		of the index tree, so that the node pointer updates will
+		not fail because of lack of space */
+
+		ut_a(cursor->tree_height != ULINT_UNDEFINED);
+
+		ulint	n_extents = cursor->tree_height / 32 + 1;
+
+		success = fsp_reserve_free_extents(&n_reserved,
+						   index->space,
+						   n_extents,
+						   FSP_CLEANING, mtr);
+		if (!success) {
+			*err = DB_OUT_OF_FILE_SPACE;
+
+			return(FALSE);
+		}
+	}
+
+	heap = mem_heap_create(1024);
+	rec = btr_cur_get_rec(cursor);
+	page_zip = buf_block_get_page_zip(block);
+#ifdef UNIV_ZIP_DEBUG
+	ut_a(!page_zip || page_zip_validate(page_zip, page, index));
+#endif /* UNIV_ZIP_DEBUG */
+
+	offsets = rec_get_offsets(rec, index, NULL, ULINT_UNDEFINED, &heap);
+
+	if (rec_offs_any_extern(offsets)) {
+		btr_rec_free_externally_stored_fields(index,
+						      rec, offsets, page_zip,
+						      rb_ctx, mtr);
+#ifdef UNIV_ZIP_DEBUG
+		ut_a(!page_zip || page_zip_validate(page_zip, page, index));
+#endif /* UNIV_ZIP_DEBUG */
+	}
+
+	if (flags == 0) {
+		lock_update_delete(block, rec);
+	}
+
+	if (UNIV_UNLIKELY(page_get_n_recs(page) < 2)
+	    && UNIV_UNLIKELY(dict_index_get_page(index)
+			     != buf_block_get_page_no(block))) {
+
+		/* If there is only one record, drop the whole page in
+		btr_discard_page, if this is not the root page */
+
+		btr_discard_page(cursor, mtr);
+
+		ret = TRUE;
+
+		goto return_after_reservations;
+	}
+
+	if (!page_is_leaf(page)
+	    && UNIV_UNLIKELY(rec == page_rec_get_next(
+	    page_get_infimum_rec(page)))) {
+
+		rec_t*	next_rec = page_rec_get_next(rec);
+		ulint root_page_no = dict_index_get_page(index);
+
+		if (btr_page_get_prev(page, mtr) == FIL_NULL ||
+		    root_page_no == page_get_page_no(page)) {
+			/* If we delete the leftmost node pointer on a
+			non-leaf level, we must mark the new leftmost node
+			pointer as the predefined minimum record */
+
+			/* This will make page_zip_validate() fail until
+			page_cur_delete_rec() completes.  This is harmless,
+			because everything will take place within a single
+			mini-transaction and because writing to the redo log
+			is an atomic operation (performed by mtr_commit()). */
+			btr_set_min_rec_mark(next_rec, mtr);
+		} else {
+			/* Otherwise, if we delete the leftmost node pointer
+			on a page, we have to change the father node pointer
+			so that it is equal to the new leftmost node pointer
+			on the page */
+			ulint level = btr_page_get_level(page, mtr);
+
+			btr_node_ptr_delete(index, block, mtr);
+
+			dtuple_t*	node_ptr = dict_index_build_node_ptr(
+			    index, next_rec, btr_page_get_rel_offset(block),
+			    heap, level);
+
+//			dtuple_t*	node_ptr = dict_index_build_node_ptr(
+//				index, next_rec, buf_block_get_page_no(block),
+//				heap, level);
+
+			btr_insert_on_non_leaf_level(
+			    flags, index, level + 1, node_ptr, mtr);
+		}
+	}
+
+	btr_search_update_hash_on_delete(cursor);
+
+	page_cur_delete_rec(btr_cur_get_page_cur(cursor), index, offsets, mtr);
+#ifdef UNIV_ZIP_DEBUG
+	ut_a(!page_zip || page_zip_validate(page_zip, page, index));
+#endif /* UNIV_ZIP_DEBUG */
+
+	ut_ad(btr_check_node_ptr(index, block, mtr));
+
+	return_after_reservations:
+	*err = DB_SUCCESS;
+
+	mem_heap_free(heap);
+
+//	if (ret == FALSE) {
+//		ret = btr_cur_compress_if_useful(cursor, FALSE, mtr);
+//	}
+
+	if (n_reserved > 0) {
+		fil_space_release_free_extents(index->space, n_reserved);
+	}
+
+	return(ret);
+}
 /*******************************************************************//**
 Adds path information to the cursor for the current page, for which
 the binary search has been performed. */
