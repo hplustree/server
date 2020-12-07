@@ -1750,7 +1750,7 @@ int main(int argc __attribute__((unused)), char *argv[]) {
     test_create_table_index_with_primary_key(&index, &table, (char *) table_name);
 
     // test: insert operation
-    ulint length = 1000000;
+    ulint length = 2000000;
     std::vector<ulint> entries = prepare_data(length);
 
     row_prebuilt_t *pre_built = test_insert(&index, &table, entries);

@@ -608,6 +608,19 @@ btr_insert_on_non_leaf_level_func(
 # define btr_insert_on_non_leaf_level(f,i,l,t,m)			\
 	btr_insert_on_non_leaf_level_func(f,i,l,t,__FILE__,__LINE__,m)
 #endif /* !UNIV_HOTBACKUP */
+/****************************************************************/
+UNIV_INTERN
+void
+btr_insert_on_upper_level_right_sibling(
+/*==============================*/
+ulint		flags,	/*!< in: undo logging and locking flags */
+dict_index_t*	index,	/*!< in: index */
+ulint		level,	/*!< in: level, must be > 0 */
+dtuple_t*	tuple,	/*!< in: the record to be inserted */
+const char*	file,	/*!< in: file name */
+ulint		line,	/*!< in: line where called */
+mtr_t*		mtr,    /*!< in: mtr */
+btr_cur_t *cursor);
 /****************************************************************//**
 Sets a record as the predefined minimum record. */
 UNIV_INTERN

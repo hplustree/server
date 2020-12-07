@@ -1516,18 +1516,50 @@ btr_page_free_low(
 
 	ut_ad(buf_block_get_page_no(block) != index->page);
 
+    ulint space = buf_block_get_space(block);
+//    ulint zip_size = dict_table_zip_size(index->table);
+
 	ret_page = buf_block_get_frame(block);
 	seg_header = ret_page + PAGE_HEADER + PAGE_BTR_SEG_PARENT;
 
-	fseg_free_page(seg_header,
-		       buf_block_get_space(block),
-		       buf_block_get_page_no(block), mtr);
+    //change next, prev links of page's next and prev pages
+//    ulint next_page_no = btr_page_get_next(ret_page, mtr);
+//    ulint prev_page_no = btr_page_get_prev(ret_page, mtr);
+//
+//    if (prev_page_no != FIL_NULL) {
+//        buf_block_t *prev_block = btr_block_get(space,
+//                                                zip_size,
+//                                                prev_page_no,
+//                                                RW_X_LATCH,
+//                                                index, mtr);
+//        page_t *prev_page = buf_block_get_frame(prev_block);
+//
+//        btr_page_set_next(prev_page,
+//                          buf_block_get_page_zip(prev_block),
+//                          next_page_no, mtr);
+//    }
+//
+//    if (next_page_no != FIL_NULL) {
+//        buf_block_t *next_block = btr_block_get(space,
+//                                                zip_size,
+//                                                next_page_no,
+//                                                RW_X_LATCH,
+//                                                index, mtr);
+//        page_t *next_page = buf_block_get_frame(next_block);
+//
+//        btr_page_set_prev(next_page,
+//                          buf_block_get_page_zip(next_block),
+//                          prev_page_no, mtr);
+//    }
 
-	page_zip = buf_block_get_page_zip(root_block);
+    fseg_free_page(seg_header, space,
+                   buf_block_get_page_no(block), mtr);
 
-	if (btr_page_get_level(ret_page, mtr) == 0) {
-		btr_page_set_next(root, page_zip,
-				  btr_page_get_next(root, mtr) - 1, mtr);
+    page_zip = buf_block_get_page_zip(root_block);
+
+    if (btr_page_get_level(ret_page, mtr) == 0) {
+        btr_page_set_next(root, page_zip,
+                          btr_page_get_next(root, mtr) - 1, mtr);
 	}
 
 	btr_page_set_prev(root, page_zip, btr_page_get_prev(root, mtr) - 1,
@@ -3111,6 +3143,54 @@ btr_insert_on_non_leaf_level_func(/*function that perform recursive insert to up
 	mem_heap_free(heap);
 }
 
+UNIV_INTERN
+void
+btr_insert_on_upper_level_right_sibling(
+/*==============================*/
+        ulint		flags,	/*!< in: undo logging and locking flags */
+        dict_index_t*	index,	/*!< in: index */
+        ulint		level,	/*!< in: level, must be > 0 */
+        dtuple_t*	tuple,	/*!< in: the record to be inserted */
+        const char*	file,	/*!< in: file name */
+        ulint		line,	/*!< in: line where called */
+        mtr_t*		mtr,    /*!< in: mtr */
+        btr_cur_t *cursor)
+{
+    big_rec_t*	dummy_big_rec;
+    dberr_t		err;
+    rec_t*		rec;
+    ulint*		offsets	= NULL;
+    mem_heap_t*	heap = NULL;
+
+    ut_ad(level > 0);
+
+    btr_cur_search_to_nth_level(index, level, tuple, PAGE_CUR_LE,
+                                    BTR_CONT_MODIFY_TREE,
+                                    cursor, 0, file, line, mtr);
+
+    ut_ad(cursor->flag == BTR_CUR_BINARY);
+
+    err = btr_cur_optimistic_insert(
+            flags
+            | BTR_NO_LOCKING_FLAG
+            | BTR_KEEP_SYS_FLAG
+            | BTR_NO_UNDO_LOG_FLAG,
+            cursor, &offsets, &heap,
+            tuple, &rec, &dummy_big_rec, 0, NULL, mtr);
+
+    if (err == DB_FAIL) {
+        err = btr_cur_pessimistic_insert(flags
+                                         | BTR_NO_LOCKING_FLAG
+                                         | BTR_KEEP_SYS_FLAG
+                                         | BTR_NO_UNDO_LOG_FLAG,
+                                         cursor, &offsets, &heap,
+                                         tuple, &rec,
+                                         &dummy_big_rec, 0, NULL, mtr);
+        ut_a(err == DB_SUCCESS);
+    }
+    mem_heap_free(heap);
+}
+
 /**************************************************************//**
 Attaches the halves of an index page on the appropriate level in an
 index tree. */
@@ -3374,9 +3454,11 @@ btr_insert_into_right_sibling(
 	buf_block_t*	next_block;
 	page_t*		next_page;
 	btr_cur_t	next_father_cursor;
+    btr_cur_t	father_cursor;
 	rec_t*		rec = NULL;
 	ulint		zip_size = buf_block_get_zip_size(block);
 	ulint		max_size;
+	btr_cur_t next_btr_cursor;
 
 	next_block = btr_block_get(
 		buf_block_get_space(block), zip_size,
@@ -3387,6 +3469,13 @@ btr_insert_into_right_sibling(
 
 	btr_page_get_father(
 		cursor->index, next_block, mtr, &next_father_cursor);
+
+    btr_page_get_father(
+            cursor->index, block, mtr, &father_cursor);
+
+    if(&father_cursor.page_cur.block->page.offset != &next_father_cursor.page_cur.block->page.offset){
+        printf("stop");
+    }
 
 	page_cur_search(
 		next_block, cursor->index, tuple, PAGE_CUR_LE,
@@ -3451,8 +3540,10 @@ btr_insert_into_right_sibling(
 //		cursor->index, rec, buf_block_get_page_no(next_block),
 //		heap, level);
 
-	btr_insert_on_non_leaf_level(
-		flags, cursor->index, level + 1, node_ptr, mtr);
+	next_btr_cursor = *cursor;
+    btr_insert_on_upper_level_right_sibling(
+		flags, cursor->index, level + 1, node_ptr,
+		__FILE__, __LINE__, mtr, &next_btr_cursor);
 
 	if (!compressed) {
 		btr_cur_compress_if_useful(&next_father_cursor, FALSE, mtr);
@@ -3536,8 +3627,9 @@ btr_child_pages_reallocation(
 //	}
 
 	/* Reallocate pages one by one in loop */
+	ulint idx=0;
 	while (! (page_cur_get_rec(&cur1) == limit_rec)) {
-
+        idx++;
 		rec_node_ptr = page_cur_get_rec(&cur1);
 		ut_ad(!page_rec_is_supremum(rec_node_ptr));
 
@@ -3597,11 +3689,20 @@ btr_child_pages_reallocation(
 		/* Set next and prev links */
 		if (prev_new_child_block != NULL){
 
-			btr_page_set_prev(new_child_page, new_page_zip,
-					  buf_block_get_page_no(prev_new_child_block), mtr);
+            ulint no = buf_block_get_page_no(prev_new_child_block);
+		    btr_page_set_prev(new_child_page, new_page_zip,
+					  no, mtr);
 
 			btr_page_set_next(buf_block_get_frame(prev_new_child_block), new_page_zip,
 					  buf_block_get_page_no(new_child_block), mtr);
+//			ulint prev_child_no = btr_page_get_prev(new_child_page, mtr);
+//			if(prev_child_no != FIL_NULL) {
+//			    btr_page_set_next(
+//			            buf_block_get_frame(btr_block_get(space, 0, prev_child_no, RW_X_LATCH, index, mtr)),
+//			            buf_block_get_page_zip(new_child_block), no, mtr);
+//			}
+//			btr_page_set_prev(buf_block_get_frame(prev_new_child_block),
+//                     buf_block_get_page_zip(prev_new_child_block), prev_child_no, mtr);
 		} else {
 			/* If child page is the first page that is reallocated,
 			 then only its prev page no is same as old child's prev.*/
@@ -3682,17 +3783,18 @@ btr_child_pages_reallocation(
 		 update next and prev links on its level */
 		prev_new_child_block = new_child_block;
 
-	}
+        btr_page_set_next(new_child_page, new_page_zip, next_page_no, mtr);
 
-	btr_page_set_next(new_child_page, new_page_zip, next_page_no, mtr);
+    }
+
 
 	if (next_page_no != FIL_NULL) {
 		buf_block_t*	next_block = btr_block_get(
 		    space, buf_block_get_zip_size(child_block), next_page_no, RW_X_LATCH, index, mtr);
 #ifdef UNIV_BTR_DEBUG
 		ut_a(page_is_comp(next_block->frame) == page_is_comp(child_page));
-		ut_a(btr_page_get_prev(next_block->frame, mtr)
-		     == page_get_page_no(child_page));
+//		ut_a(btr_page_get_prev(next_block->frame, mtr)
+//		     == page_get_page_no(child_page));
 #endif /* UNIV_BTR_DEBUG */
 
 		btr_page_set_prev(buf_block_get_frame(next_block),
