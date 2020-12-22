@@ -3671,6 +3671,7 @@ fseg_free_page_low(
 	/* Drop search system page hash index if the page is found in
 	the pool and is hashed */
 
+    seg_id = mach_read_from_8(seg_inode + FSEG_ID);
 	btr_search_drop_page_hash_when_freed(space, page);
 
 	descr = xdes_get_descriptor(space, zip_size, page, mtr);
@@ -3726,7 +3727,7 @@ crash:
 	/* If we get here, the page is in some extent of the segment */
 
 	descr_id = mach_read_from_8(descr + XDES_ID);
-	seg_id = mach_read_from_8(seg_inode + FSEG_ID);
+
 #if 0
 	fprintf(stderr,
 		"InnoDB: InnoDB is freeing space %lu page %lu,\n"

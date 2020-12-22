@@ -3142,9 +3142,12 @@ btr_insert_on_non_leaf_level_func(/*function that perform recursive insert to up
 	}
 	mem_heap_free(heap);
 }
-
+/*******************************************************//**
+Inserts a data tuple to a tree on a non-leaf level from right
+sibling insert function. It is assumed that mtr holds an
+x-latch on the tree. */
 UNIV_INTERN
-void
+rec_t*
 btr_insert_on_upper_level_right_sibling(
 /*==============================*/
         ulint		flags,	/*!< in: undo logging and locking flags */
@@ -3163,10 +3166,6 @@ btr_insert_on_upper_level_right_sibling(
     mem_heap_t*	heap = NULL;
 
     ut_ad(level > 0);
-
-    btr_cur_search_to_nth_level(index, level, tuple, PAGE_CUR_LE,
-                                    BTR_CONT_MODIFY_TREE,
-                                    cursor, 0, file, line, mtr);
 
     ut_ad(cursor->flag == BTR_CUR_BINARY);
 
@@ -3189,6 +3188,7 @@ btr_insert_on_upper_level_right_sibling(
         ut_a(err == DB_SUCCESS);
     }
     mem_heap_free(heap);
+    return rec;
 }
 
 /**************************************************************//**
@@ -3458,7 +3458,6 @@ btr_insert_into_right_sibling(
 	rec_t*		rec = NULL;
 	ulint		zip_size = buf_block_get_zip_size(block);
 	ulint		max_size;
-	btr_cur_t next_btr_cursor;
 
 	next_block = btr_block_get(
 		buf_block_get_space(block), zip_size,
@@ -3472,10 +3471,6 @@ btr_insert_into_right_sibling(
 
     btr_page_get_father(
             cursor->index, block, mtr, &father_cursor);
-
-    if(&father_cursor.page_cur.block->page.offset != &next_father_cursor.page_cur.block->page.offset){
-        printf("stop");
-    }
 
 	page_cur_search(
 		next_block, cursor->index, tuple, PAGE_CUR_LE,
@@ -3540,10 +3535,34 @@ btr_insert_into_right_sibling(
 //		cursor->index, rec, buf_block_get_page_no(next_block),
 //		heap, level);
 
-	next_btr_cursor = *cursor;
-    btr_insert_on_upper_level_right_sibling(
-		flags, cursor->index, level + 1, node_ptr,
-		__FILE__, __LINE__, mtr, &next_btr_cursor);
+    rec_t *returned_rec = NULL;
+    if (&father_cursor.page_cur.block->page.offset != &next_father_cursor.page_cur.block->page.offset) {
+//        flag = 1;
+        returned_rec = btr_insert_on_upper_level_right_sibling(
+                flags, cursor->index, level + 1, node_ptr,
+                __FILE__, __LINE__, mtr, &next_father_cursor);
+        ut_ad(returned_rec);
+
+    } else {
+        btr_insert_on_non_leaf_level(
+                flags, cursor->index, level + 1, node_ptr, mtr);
+    }
+
+//    if (flag) {
+//        buf_block_t *next_father_block = btr_cur_get_block(&next_father_cursor);
+//
+//        fseg_header_t *hdr = buf_block_get_frame(
+//                btr_cur_get_block(&father_cursor)) + PAGE_HEADER + PAGE_BTR_SEG_OWN;
+//
+//        next_father_block = btr_child_pages_reallocation(
+//                next_father_block, btr_get_prev_user_rec(returned_rec, mtr),
+//                btr_get_next_user_rec(returned_rec, mtr), cursor->index, hdr, mtr);
+//
+//        if (next_father_block == NULL) {
+//            err = DB_OUT_OF_FILE_SPACE;
+//            return NULL;
+//        }
+//    }
 
 	if (!compressed) {
 		btr_cur_compress_if_useful(&next_father_cursor, FALSE, mtr);

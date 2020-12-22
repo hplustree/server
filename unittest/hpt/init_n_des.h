@@ -565,6 +565,9 @@ my_bool setup(longlong page_size = 1LL << 14, longlong buffer_pool_size = 100 * 
   if(page_size == 1L << 14) {
     innobase_log_buffer_size = 1024L; /* For 16kb page size */
   }
+  else if(page_size == 1L << 13) {
+      innobase_log_buffer_size = 2048L; /* For 8kb page size */
+  }
   else if(page_size == 1L << 12) {
     innobase_log_buffer_size = 4096L; /* For 4kb page size */
   }

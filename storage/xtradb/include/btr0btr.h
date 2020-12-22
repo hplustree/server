@@ -608,9 +608,12 @@ btr_insert_on_non_leaf_level_func(
 # define btr_insert_on_non_leaf_level(f,i,l,t,m)			\
 	btr_insert_on_non_leaf_level_func(f,i,l,t,__FILE__,__LINE__,m)
 #endif /* !UNIV_HOTBACKUP */
-/****************************************************************/
+/*******************************************************//**
+Inserts a data tuple to a tree on a non-leaf level from right
+sibling insert function. It is assumed that mtr holds an
+x-latch on the tree. */
 UNIV_INTERN
-void
+rec_t*
 btr_insert_on_upper_level_right_sibling(
 /*==============================*/
 ulint		flags,	/*!< in: undo logging and locking flags */
