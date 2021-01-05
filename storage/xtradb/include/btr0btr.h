@@ -623,7 +623,7 @@ dtuple_t*	tuple,	/*!< in: the record to be inserted */
 const char*	file,	/*!< in: file name */
 ulint		line,	/*!< in: line where called */
 mtr_t*		mtr,    /*!< in: mtr */
-btr_cur_t *cursor);
+btr_cur_t   cursor);
 /****************************************************************//**
 Sets a record as the predefined minimum record. */
 UNIV_INTERN

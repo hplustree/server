@@ -227,6 +227,10 @@ row_prebuilt_t *test_insert(dict_index_t *index, dict_table_t *table,
 
     for (ulint i = 0; i < data_len; i++) {
 
+        if (i % 100000 == 0) {
+            std::cout << i << "\n";
+        }
+
         btr_cur_t cursor;
         trx_start_if_not_started_xa(pre_built->trx);
 
@@ -334,13 +338,15 @@ row_prebuilt_t *test_insert(dict_index_t *index, dict_table_t *table,
             exit(1);
         }
 
-        ut_memcpy(pre_built->row_id, pre_built->ins_node->row_id_buf, DATA_ROW_ID_LEN);
+        ut_memcpy(pre_built->row_id, pre_built->ins_node->row_id_buf,
+                  DATA_ROW_ID_LEN);
         mtr_commit(&mtr);
         trx_commit_for_mysql(pre_built->trx);
     }
 
     std::time_t end_time = time(nullptr);
-    std::cout << "\ntime taken for insertion: " << (end_time - start_time) / 60 << " m "
+    std::cout << "\ntime taken for insertion: " << (end_time - start_time) / 60
+              << " m "
               << (end_time - start_time) % 60 << " s\n";
 
     ok(err == dberr_t::DB_SUCCESS, "insert successful");
@@ -1623,7 +1629,8 @@ fprintf(stderr, " cnt %lu ret value %lu err\n", cnt, err); */
 
     DEBUG_SYNC_C("innodb_row_search_for_mysql_exit");
 
-    // we will exclude trx_id and roll_ptr data from result record for final output
+    // we will exclude trx_id and roll_ptr data from result
+    // record for final output
     for (ulint i = 0; i < 4; i++)
         buf[i] = (byte) result_rec[i];
     for (ulint i = 4; i < 8; i++)
@@ -1646,7 +1653,8 @@ void test_search(row_prebuilt_t *pre_built, std::vector<ulint> entries) {
     ulint mode = PAGE_CUR_GE;   //HA_READ_KEY_EXACT
     ulint match_mode = ROW_SEL_EXACT;
     ulint data_len = entries.size();
-    uchar buf[8] = {'\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00'};
+    uchar buf[8] = {'\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00',
+                    '\x00'};
     dberr_t ret;
     trx_t *user_trx = trx_allocate_for_background();
 
@@ -1692,6 +1700,10 @@ void test_search(row_prebuilt_t *pre_built, std::vector<ulint> entries) {
 
     for (ulint i = 0; i < data_len; i++) {
 
+        if (i % 100000 == 0) {
+            std::cout << i << "\n";
+        }
+
         pre_built->sql_stat_start = TRUE;
 
         for (ulint l = 0; l < key_len; l++)
@@ -1723,8 +1735,10 @@ void test_search(row_prebuilt_t *pre_built, std::vector<ulint> entries) {
     }
 
     std::time_t end_time = time(nullptr);
-    std::cout << "\ntime taken for reading: " << (end_time - start_time) / 60 << " m "
-              << (end_time - start_time) % 60 << " s\nentries:" << count << "\n";
+    std::cout << "\ntime taken for reading: " << (end_time - start_time) / 60
+              << " m "
+              << (end_time - start_time) % 60 << " s\nread entries: " << count
+              << "\n";
 
     ok(ret == dberr_t::DB_SUCCESS, "read successful");
 

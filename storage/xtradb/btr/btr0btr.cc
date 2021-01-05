@@ -3157,7 +3157,7 @@ btr_insert_on_upper_level_right_sibling(
         const char*	file,	/*!< in: file name */
         ulint		line,	/*!< in: line where called */
         mtr_t*		mtr,    /*!< in: mtr */
-        btr_cur_t *cursor)
+        btr_cur_t   cursor)
 {
     big_rec_t*	dummy_big_rec;
     dberr_t		err;
@@ -3167,14 +3167,14 @@ btr_insert_on_upper_level_right_sibling(
 
     ut_ad(level > 0);
 
-    ut_ad(cursor->flag == BTR_CUR_BINARY);
+    ut_ad(cursor.flag == BTR_CUR_BINARY);
 
     err = btr_cur_optimistic_insert(
             flags
             | BTR_NO_LOCKING_FLAG
             | BTR_KEEP_SYS_FLAG
             | BTR_NO_UNDO_LOG_FLAG,
-            cursor, &offsets, &heap,
+            &cursor, &offsets, &heap,
             tuple, &rec, &dummy_big_rec, 0, NULL, mtr);
 
     if (err == DB_FAIL) {
@@ -3182,7 +3182,7 @@ btr_insert_on_upper_level_right_sibling(
                                          | BTR_NO_LOCKING_FLAG
                                          | BTR_KEEP_SYS_FLAG
                                          | BTR_NO_UNDO_LOG_FLAG,
-                                         cursor, &offsets, &heap,
+                                         &cursor, &offsets, &heap,
                                          tuple, &rec,
                                          &dummy_big_rec, 0, NULL, mtr);
         ut_a(err == DB_SUCCESS);
@@ -3450,140 +3450,143 @@ btr_insert_into_right_sibling(
 		return(NULL);
 	}
 
-	page_cur_t	next_page_cursor;
+	page_cur_t	    next_page_cursor;
 	buf_block_t*	next_block;
-	page_t*		next_page;
-	btr_cur_t	next_father_cursor;
-    btr_cur_t	father_cursor;
-	rec_t*		rec = NULL;
-	ulint		zip_size = buf_block_get_zip_size(block);
-	ulint		max_size;
+	page_t*		    next_page;
+	btr_cur_t	    next_father_cursor;
+    btr_cur_t	    father_cursor;
+	rec_t*		    rec = NULL;
+	ulint		    zip_size = buf_block_get_zip_size(block);
+	ulint		    max_size;
+	dict_index_t*   index = cursor->index;
 
-	next_block = btr_block_get(
-		buf_block_get_space(block), zip_size,
-		next_page_no, RW_X_LATCH, cursor->index, mtr);
-	next_page = buf_block_get_frame(next_block);
+    next_block = btr_block_get(
+            buf_block_get_space(block), zip_size,
+            next_page_no, RW_X_LATCH, index, mtr);
+    next_page = buf_block_get_frame(next_block);
 
-	bool	is_leaf = page_is_leaf(next_page);
+    bool is_leaf = page_is_leaf(next_page);
 
-	btr_page_get_father(
-		cursor->index, next_block, mtr, &next_father_cursor);
+    btr_page_get_father(index, block, mtr, &father_cursor);
 
-    btr_page_get_father(
-            cursor->index, block, mtr, &father_cursor);
+    btr_page_get_father(index, next_block, mtr, &next_father_cursor);
 
-	page_cur_search(
-		next_block, cursor->index, tuple, PAGE_CUR_LE,
-		&next_page_cursor);
+    page_cur_search(
+            next_block, index, tuple, PAGE_CUR_LE, &next_page_cursor);
 
-	max_size = page_get_max_insert_size_after_reorganize(next_page, 1);
+    max_size = page_get_max_insert_size_after_reorganize(next_page, 1);
 
-	/* Extends gap lock for the next page */
-	lock_update_split_left(next_block, block);
+    /* Extends gap lock for the next page */
+    lock_update_split_left(next_block, block);
 
-	rec = page_cur_tuple_insert(
-		&next_page_cursor, tuple, cursor->index, offsets, &heap,
-		n_ext, mtr);
+    rec = page_cur_tuple_insert(
+            &next_page_cursor, tuple, index, offsets, &heap,
+            n_ext, mtr);
 
-	if (rec == NULL) {
-		if (zip_size && is_leaf
-		    && !dict_index_is_clust(cursor->index)) {
-			/* Reset the IBUF_BITMAP_FREE bits, because
-			page_cur_tuple_insert() will have attempted page
-			reorganize before failing. */
-			ibuf_reset_free_bits(next_block);
-		}
-		return(NULL);
-	}
+    if (rec == NULL) {
+        if (zip_size && is_leaf
+            && !dict_index_is_clust(index)) {
+            /* Reset the IBUF_BITMAP_FREE bits, because
+            page_cur_tuple_insert() will have attempted page
+            reorganize before failing. */
+            ibuf_reset_free_bits(next_block);
+        }
+        return (NULL);
+    }
 
-	ibool	compressed;
-	dberr_t	err;
-	ulint	level = btr_page_get_level(next_page, mtr);
+    ibool   compressed;
+    dberr_t err;
+    ulint   level = btr_page_get_level(next_page, mtr);
 
-	/* adjust cursor position */
-	*btr_cur_get_page_cur(cursor) = next_page_cursor;
+    /* adjust cursor position */
+    *btr_cur_get_page_cur(cursor) = next_page_cursor;
 
-	ut_ad(btr_cur_get_rec(cursor) == page_get_infimum_rec(next_page));
-	ut_ad(page_rec_get_next(page_get_infimum_rec(next_page)) == rec);
+    ut_ad(btr_cur_get_rec(cursor) == page_get_infimum_rec(next_page));
+    ut_ad(page_rec_get_next(page_get_infimum_rec(next_page)) == rec);
 
-	/* We have to change the parent node pointer */
+    /* We have to change the parent node pointer */
 
-	/* Problem:- It deletes node pointer and tries to merge pages. If merge page already
-	   contains rel offset in node pointer record, same as rel offset that is going to insert
-	   after merge page. Then merge page will have two node pointer with same rel offset. */
+    /* Problem:- It deletes node pointer and tries to merge pages. If merge page already
+       contains rel offset in node pointer record, same as rel offset that is going to insert
+       after merge page. Then merge page will have two node pointer with same rel offset. */
 
-	/* Changed:- Don't tries to merge page during delete. Once delete and insert operation
-	   is done then after tries to merge page. So insert the node pointer record before merge.
-	   During merge it re allocates child pages and changes rel offset of node pointer. So
-	   merge page doesn't contains two node pointer with same rel offset. */
+    /* Changed:- Don't tries to merge page during delete. Once delete and insert operation
+       is done then after tries to merge page. So insert the node pointer record before merge.
+       During merge it re allocates child pages and changes rel offset of node pointer. So
+       merge page doesn't contains two node pointer with same rel offset. */
 
-	compressed = btr_cur_pessimistic_delete_without_merge(
-		&err, TRUE, &next_father_cursor,
-		BTR_CREATE_FLAG, RB_NONE, mtr);
+    compressed = btr_cur_pessimistic_delete_without_merge(
+            &err, TRUE, &next_father_cursor,
+            BTR_CREATE_FLAG, RB_NONE, mtr);
 
-	ut_a(err == DB_SUCCESS);
+    ut_a(err == DB_SUCCESS);
 
 //	if (!compressed) {
 //		btr_cur_compress_if_useful(&next_father_cursor, FALSE, mtr);
 //	}
 
-	dtuple_t*	node_ptr = dict_index_build_node_ptr(
-	    cursor->index, rec, btr_page_get_rel_offset(next_block),
-	    heap, level);
+    ulint rel_offs = btr_page_get_rel_offset(next_block);
+//    byte *buff = static_cast<byte *>(mem_heap_alloc(heap, 2));
+//    mach_write_to_2(buff, rel_offs);
+    dtuple_t *node_ptr = dict_index_build_node_ptr(index, rec, rel_offs, heap,
+                                                   level);
 
 //	dtuple_t*	node_ptr = dict_index_build_node_ptr(
 //		cursor->index, rec, buf_block_get_page_no(next_block),
 //		heap, level);
 
-    rec_t *returned_rec = NULL;
-    if (&father_cursor.page_cur.block->page.offset != &next_father_cursor.page_cur.block->page.offset) {
-//        flag = 1;
-        returned_rec = btr_insert_on_upper_level_right_sibling(
-                flags, cursor->index, level + 1, node_ptr,
-                __FILE__, __LINE__, mtr, &next_father_cursor);
-        ut_ad(returned_rec);
+    rec_t *returned_rec = btr_insert_on_upper_level_right_sibling(
+            flags, index, level + 1, node_ptr,
+            __FILE__, __LINE__, mtr, next_father_cursor);
 
+    if (&father_cursor.page_cur.block->page.offset ==
+        &next_father_cursor.page_cur.block->page.offset) {
+
+        /* We only check for compression when block and next block
+         * belong to same father */
+
+        if (!compressed) {
+            btr_cur_compress_if_useful(&next_father_cursor, FALSE, mtr);
+        }
     } else {
+
+        /* If the parent of block and next block are different,
+         * then we have updated left most node pointer of the father
+         * in above insertion step, so now we'll also have to update
+         * its node pointer in father page so that it is equal to
+         * new left most node pointer */
+
+        level = level + 1;
+        buf_block_t *next_father = page_cur_get_block(
+                &next_father_cursor.page_cur);
+
+        dtuple_t *node_ptr_upper = dict_index_build_node_ptr(
+                index, returned_rec,
+                btr_page_get_rel_offset(next_father),
+                heap, level);
+
         btr_insert_on_non_leaf_level(
-                flags, cursor->index, level + 1, node_ptr, mtr);
+                flags, index, level + 1, node_ptr_upper, mtr);
+
+        ut_ad(btr_check_node_ptr(index, next_father, mtr));
     }
 
-//    if (flag) {
-//        buf_block_t *next_father_block = btr_cur_get_block(&next_father_cursor);
-//
-//        fseg_header_t *hdr = buf_block_get_frame(
-//                btr_cur_get_block(&father_cursor)) + PAGE_HEADER + PAGE_BTR_SEG_OWN;
-//
-//        next_father_block = btr_child_pages_reallocation(
-//                next_father_block, btr_get_prev_user_rec(returned_rec, mtr),
-//                btr_get_next_user_rec(returned_rec, mtr), cursor->index, hdr, mtr);
-//
-//        if (next_father_block == NULL) {
-//            err = DB_OUT_OF_FILE_SPACE;
-//            return NULL;
-//        }
-//    }
+    ut_ad(rec_offs_validate(rec, index, *offsets));
 
-	if (!compressed) {
-		btr_cur_compress_if_useful(&next_father_cursor, FALSE, mtr);
-	}
+    if (is_leaf && !dict_index_is_clust(index)) {
+        /* Update the free bits of the B-tree page in the
+        insert buffer bitmap. */
 
-	ut_ad(rec_offs_validate(rec, cursor->index, *offsets));
+        if (zip_size) {
+            ibuf_update_free_bits_zip(next_block, mtr);
+        } else {
+            ibuf_update_free_bits_if_full(
+                    next_block, max_size,
+                    rec_offs_size(*offsets) + PAGE_DIR_SLOT_SIZE);
+        }
+    }
 
-	if (is_leaf && !dict_index_is_clust(cursor->index)) {
-		/* Update the free bits of the B-tree page in the
-		insert buffer bitmap. */
-
-		if (zip_size) {
-			ibuf_update_free_bits_zip(next_block, mtr);
-		} else {
-			ibuf_update_free_bits_if_full(
-				next_block, max_size,
-				rec_offs_size(*offsets) + PAGE_DIR_SLOT_SIZE);
-		}
-	}
-
-	return(rec);
+    return (rec);
 }
 /*************************************************************//**
 Reallocates pages in index tree.

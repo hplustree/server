@@ -526,7 +526,8 @@ or if it is the only page on the level. It is assumed that mtr holds
 an x-latch on the tree and on the cursor page. To avoid deadlocks,
 mtr must also own x-latches to brothers of page, if those brothers
 exist.
-@return	TRUE if compression occurred */
+@return	TRUE if compression occurred
+ADDED: */
 UNIV_INTERN
 ibool
 btr_cur_pessimistic_delete_without_merge(
@@ -542,7 +543,7 @@ btr_cur_pessimistic_delete_without_merge(
 				will succeed */
     btr_cur_t*	cursor,	/*!< in: cursor on the record to delete;
 				if compression does not occur, the cursor
-				stays valid: it points to successor of
+				stays valid: it points to predecessor of
 				deleted record on function exit */
     ulint		flags,	/*!< in: BTR_CREATE_FLAG or 0 */
     enum trx_rb_ctx	rb_ctx,	/*!< in: rollback context */

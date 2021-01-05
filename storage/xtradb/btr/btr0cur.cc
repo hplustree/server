@@ -887,9 +887,9 @@ retry_page_get:
 			goto retry_page_get;
 		}
 
-		// changes required
-        low_bytes = 0;
-		up_bytes = 0;
+//		// changes required
+//        low_bytes = 0;
+//		up_bytes = 0;
 
 		goto search_loop;
 	}
@@ -3826,7 +3826,8 @@ or if it is the only page on the level. It is assumed that mtr holds
 an x-latch on the tree and on the cursor page. To avoid deadlocks,
 mtr must also own x-latches to brothers of page, if those brothers
 exist.
-@return	TRUE if compression occurred */
+@return	TRUE if compression occurred
+ADDED: */
 UNIV_INTERN
 ibool
 btr_cur_pessimistic_delete_without_merge(
@@ -3842,22 +3843,22 @@ btr_cur_pessimistic_delete_without_merge(
 				will succeed */
     btr_cur_t*	cursor,	/*!< in: cursor on the record to delete;
 				if compression does not occur, the cursor
-				stays valid: it points to successor of
+				stays valid: it points to predecessor of
 				deleted record on function exit */
     ulint		flags,	/*!< in: BTR_CREATE_FLAG or 0 */
     enum trx_rb_ctx	rb_ctx,	/*!< in: rollback context */
     mtr_t*		mtr)	/*!< in: mtr */
 {
 	buf_block_t*	block;
-	page_t*		page;
+	page_t*		    page;
 	page_zip_des_t*	page_zip;
 	dict_index_t*	index;
-	rec_t*		rec;
-	ulint		n_reserved	= 0;
-	ibool		success;
-	ibool		ret		= FALSE;
-	mem_heap_t*	heap;
-	ulint*		offsets;
+	rec_t*		    rec;
+	ulint		    n_reserved	= 0;
+	ibool		    success;
+	ibool		    ret		= FALSE;
+	mem_heap_t*	    heap;
+	ulint*		    offsets;
 
 	block = btr_cur_get_block(cursor);
 	page = buf_block_get_frame(block);
@@ -3868,7 +3869,7 @@ btr_cur_pessimistic_delete_without_merge(
 	      || dict_index_is_clust(index)
 	      || (flags & BTR_CREATE_FLAG));
 	ut_ad(mtr_memo_contains(mtr, dict_index_get_lock(index),
-				MTR_MEMO_X_LOCK));
+				            MTR_MEMO_X_LOCK));
 	ut_ad(mtr_memo_contains(mtr, block, MTR_MEMO_PAGE_X_FIX));
 	if (!has_reserved_extents) {
 		/* First reserve enough free space for the file segments
@@ -3890,19 +3891,22 @@ btr_cur_pessimistic_delete_without_merge(
 		}
 	}
 
-	heap = mem_heap_create(1024);
-	rec = btr_cur_get_rec(cursor);
-	page_zip = buf_block_get_page_zip(block);
+    heap = mem_heap_create(1024);
+    rec = btr_cur_get_rec(cursor);
+    page_zip = buf_block_get_page_zip(block);
+
+    rec_t *prev_rec = page_rec_get_prev(rec);
+
 #ifdef UNIV_ZIP_DEBUG
 	ut_a(!page_zip || page_zip_validate(page_zip, page, index));
 #endif /* UNIV_ZIP_DEBUG */
 
 	offsets = rec_get_offsets(rec, index, NULL, ULINT_UNDEFINED, &heap);
 
-	if (rec_offs_any_extern(offsets)) {
-		btr_rec_free_externally_stored_fields(index,
-						      rec, offsets, page_zip,
-						      rb_ctx, mtr);
+    if (rec_offs_any_extern(offsets)) {
+        btr_rec_free_externally_stored_fields(index,
+                                              rec, offsets, page_zip,
+                                              rb_ctx, mtr);
 #ifdef UNIV_ZIP_DEBUG
 		ut_a(!page_zip || page_zip_validate(page_zip, page, index));
 #endif /* UNIV_ZIP_DEBUG */
@@ -3950,31 +3954,40 @@ btr_cur_pessimistic_delete_without_merge(
 			on a page, we have to change the father node pointer
 			so that it is equal to the new leftmost node pointer
 			on the page */
-			ulint level = btr_page_get_level(page, mtr);
+//			ulint level = btr_page_get_level(page, mtr);
 
 			btr_node_ptr_delete(index, block, mtr);
 
-			dtuple_t*	node_ptr = dict_index_build_node_ptr(
-			    index, next_rec, btr_page_get_rel_offset(block),
-			    heap, level);
+            /* This part of code is moved to right sibling insert function */
 
 //			dtuple_t*	node_ptr = dict_index_build_node_ptr(
-//				index, next_rec, buf_block_get_page_no(block),
-//				heap, level);
+//			    index, next_rec, btr_page_get_rel_offset(block),
+//			    heap, level);
+//
+////			dtuple_t*	node_ptr = dict_index_build_node_ptr(
+////				index, next_rec, buf_block_get_page_no(block),
+////				heap, level);
+//
+//			btr_insert_on_non_leaf_level(
+//			    flags, index, level + 1, node_ptr, mtr);
+        }
+    }
 
-			btr_insert_on_non_leaf_level(
-			    flags, index, level + 1, node_ptr, mtr);
-		}
-	}
+    btr_search_update_hash_on_delete(cursor);
 
-	btr_search_update_hash_on_delete(cursor);
+    page_cur_delete_rec(btr_cur_get_page_cur(cursor), index, offsets, mtr);
 
-	page_cur_delete_rec(btr_cur_get_page_cur(cursor), index, offsets, mtr);
+    /* We should position the cursor on the predecessor of the deleted rec
+     * as in the next step we are going to insert the record after this
+     * position so in this way we'll insert the record on the
+     * deleted record's position */
+    btr_cur_position(index, prev_rec, cursor->page_cur.block, cursor);
+
 #ifdef UNIV_ZIP_DEBUG
 	ut_a(!page_zip || page_zip_validate(page_zip, page, index));
 #endif /* UNIV_ZIP_DEBUG */
 
-	ut_ad(btr_check_node_ptr(index, block, mtr));
+//	ut_ad(btr_check_node_ptr(index, block, mtr));
 
 	return_after_reservations:
 	*err = DB_SUCCESS;
