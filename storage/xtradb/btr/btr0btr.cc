@@ -3556,9 +3556,14 @@ btr_insert_into_right_sibling(
          * its node pointer in father page so that it is equal to
          * new left most node pointer */
 
-        level = level + 1;
         buf_block_t *next_father = page_cur_get_block(
                 &next_father_cursor.page_cur);
+
+//        Alternate condition for this else part
+//        if (UNIV_UNLIKELY(returned_rec == page_rec_get_next(
+//                page_get_infimum_rec(buf_block_get_frame(next_father))))) {
+
+        level = level + 1;
 
         dtuple_t *node_ptr_upper = dict_index_build_node_ptr(
                 index, returned_rec,

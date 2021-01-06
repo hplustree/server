@@ -79,10 +79,11 @@ void test_create_table_index(dict_index_t *index, dict_table_t *table,
 
     fsp_header_init(table->space, FIL_IBD_FILE_INITIAL_SIZE, &mtr);
 
-    ok(code == dberr_t::DB_SUCCESS, "Table creation");
+    ok(code == dberr_t::DB_SUCCESS, "Table creation\n");
 
     // create index object
-    *index = *dict_mem_index_create(table_name, index_name, space, type, n_fields);
+    *index = *dict_mem_index_create(table_name, index_name, space, type,
+                                    n_fields);
 
     *index = *build_clust_index_def(table, index);
 
@@ -105,10 +106,11 @@ void test_create_table_index(dict_index_t *index, dict_table_t *table,
     mtr_commit(&mtr);
 
     ok(mach_read_from_4(root + FIL_PAGE_OFFSET) == root_page_no,
-       "Created index");
+       "Index creation\n");
 }
 
-void test_create_table_index_with_primary_key(dict_index_t *index, dict_table_t *table,
+void test_create_table_index_with_primary_key(dict_index_t *index,
+                                              dict_table_t *table,
                                               char *table_name) {
 
     // create table test (id int primary key, name int);
@@ -145,10 +147,11 @@ void test_create_table_index_with_primary_key(dict_index_t *index, dict_table_t 
 
     fsp_header_init(table->space, FIL_IBD_FILE_INITIAL_SIZE, &mtr);
 
-    ok(code == dberr_t::DB_SUCCESS, "Table creation");
+    ok(code == dberr_t::DB_SUCCESS, "Table creation\n");
 
     // create index object
-    *index = *dict_mem_index_create(table_name, index_name, space, type, n_fields);
+    *index = *dict_mem_index_create(table_name, index_name, space, type,
+                                    n_fields);
 
     // add primary key field to index
     dict_mem_index_add_field(index, "id", 0);
@@ -186,7 +189,7 @@ void test_create_table_index_with_primary_key(dict_index_t *index, dict_table_t 
     mtr_commit(&mtr);
 
     ok(mach_read_from_4(root + FIL_PAGE_OFFSET) == root_page_no,
-       "Created index");
+       "Index creation\n");
 }
 
 
@@ -227,8 +230,8 @@ row_prebuilt_t *test_insert(dict_index_t *index, dict_table_t *table,
 
     for (ulint i = 0; i < data_len; i++) {
 
-        if (i % 100000 == 0) {
-            std::cout << i << "\n";
+        if (i % 500000 == 0) {
+            std::cout << "Inserting " << i << " entries\n";
         }
 
         btr_cur_t cursor;
@@ -285,7 +288,7 @@ row_prebuilt_t *test_insert(dict_index_t *index, dict_table_t *table,
         if (err != DB_SUCCESS) {
             mtr_commit(&mtr);
             trx_commit_for_mysql(pre_built->trx);
-            ok(0, "can not lock table");
+            ok(0, "can not lock table\n");
             exit(1);
         }
 
@@ -298,7 +301,7 @@ row_prebuilt_t *test_insert(dict_index_t *index, dict_table_t *table,
             index->table->file_unreadable = true;
             mtr_commit(&mtr);
             trx_commit_for_mysql(pre_built->trx);
-            ok(0, "search failed");
+            ok(0, "search failed\n");
             exit(1);
         }
 
@@ -316,7 +319,7 @@ row_prebuilt_t *test_insert(dict_index_t *index, dict_table_t *table,
                 index->table->file_unreadable = true;
                 mtr_commit(&mtr);
                 trx_commit_for_mysql(pre_built->trx);
-                ok(0, "second search failed");
+                ok(0, "second search failed\n");
                 exit(1);
             }
 
@@ -325,16 +328,18 @@ row_prebuilt_t *test_insert(dict_index_t *index, dict_table_t *table,
                                             &big_rec, 0, que_thr, &mtr);
 
             if (err == DB_FAIL) {
-                err = btr_cur_pessimistic_insert(0, &cursor, &offsets, &heap,
-                                                 pre_built->ins_node->entry, &rec,
-                                                 &big_rec, 0, que_thr, &mtr);
+                err = btr_cur_pessimistic_insert(0, &cursor, &offsets,
+                                                 &heap,
+                                                 pre_built->ins_node->entry,
+                                                 &rec, &big_rec, 0,
+                                                 que_thr, &mtr);
             }
         }
 
         if (err != DB_SUCCESS) {
             mtr_commit(&mtr);
             trx_commit_for_mysql(pre_built->trx);
-            ok(0, "insert failed");
+            ok(0, "insert failed\n");
             exit(1);
         }
 
@@ -345,11 +350,11 @@ row_prebuilt_t *test_insert(dict_index_t *index, dict_table_t *table,
     }
 
     std::time_t end_time = time(nullptr);
-    std::cout << "\ntime taken for insertion: " << (end_time - start_time) / 60
+    std::cout << "Time taken for insertion: " << (end_time - start_time) / 60
               << " m "
               << (end_time - start_time) % 60 << " s\n";
 
-    ok(err == dberr_t::DB_SUCCESS, "insert successful");
+    ok(err == dberr_t::DB_SUCCESS, "Insert successful\n");
     return pre_built;
 }
 
@@ -362,7 +367,8 @@ std::vector<ulint> prepare_data(ulint length) {
         entries[i] = i + 1;
     }
 
-    std::shuffle(entries.begin(), entries.end(), std::default_random_engine(seed));
+    std::shuffle(entries.begin(), entries.end(),
+                 std::default_random_engine(seed));
 
     return entries;
 }
@@ -1047,7 +1053,8 @@ search_index(byte *buf, ulint mode, row_prebuilt_t *prebuilt,
             }
             if (trx_id_t trx_id = index == clust_index
                                   ? row_get_rec_trx_id(rec, index, offsets)
-                                  : row_vers_impl_x_locked(rec, index, offsets)) {
+                                  : row_vers_impl_x_locked(rec, index,
+                                                           offsets)) {
                 if (trx_rw_is_active(trx_id, NULL)) {
                     /* The record belongs to an active
                     transaction. We must acquire a lock. */
@@ -1664,17 +1671,17 @@ void test_search(row_prebuilt_t *pre_built, std::vector<ulint> entries) {
 
     if (UNIV_UNLIKELY(index == NULL) || dict_index_is_corrupted(index)) {
         pre_built->index_usable = FALSE;
-        ok(0, "HA_ERR_CRASHED");
+        ok(0, "HA_ERR_CRASHED\n");
         exit(1);
     }
 
     if (UNIV_UNLIKELY(!pre_built->index_usable)) {
-        ok(0, "HA_ERR_TABLE_DEF_CHANGED or HA_ERR_INDEX_CORRUPT");
+        ok(0, "HA_ERR_TABLE_DEF_CHANGED or HA_ERR_INDEX_CORRUPT\n");
         exit(1);
     }
 
     if (index->type & DICT_FTS) {
-        ok(0, "HA_ERR_KEY_NOT_FOUND");
+        ok(0, "HA_ERR_KEY_NOT_FOUND\n");
     }
 
     pre_built->need_to_access_clustered = 1;
@@ -1700,8 +1707,8 @@ void test_search(row_prebuilt_t *pre_built, std::vector<ulint> entries) {
 
     for (ulint i = 0; i < data_len; i++) {
 
-        if (i % 100000 == 0) {
-            std::cout << i << "\n";
+        if (i % 500000 == 0) {
+            std::cout << "Reading " << i << " entries\n";
         }
 
         pre_built->sql_stat_start = TRUE;
@@ -1735,12 +1742,12 @@ void test_search(row_prebuilt_t *pre_built, std::vector<ulint> entries) {
     }
 
     std::time_t end_time = time(nullptr);
-    std::cout << "\ntime taken for reading: " << (end_time - start_time) / 60
+    std::cout << "Time taken for reading: " << (end_time - start_time) / 60
               << " m "
-              << (end_time - start_time) % 60 << " s\nread entries: " << count
+              << (end_time - start_time) % 60 << " s\nRead entries: " << count
               << "\n";
 
-    ok(ret == dberr_t::DB_SUCCESS, "read successful");
+    ok(ret == dberr_t::DB_SUCCESS, "Read successful\n");
 
 }
 
@@ -1761,10 +1768,11 @@ int main(int argc __attribute__((unused)), char *argv[]) {
     dict_index_t index;
     dict_table_t table;
 //    test_create_table_index(&index, &table, (char *) table_name);
-    test_create_table_index_with_primary_key(&index, &table, (char *) table_name);
+    test_create_table_index_with_primary_key(&index, &table,
+                                             (char *) table_name);
 
     // test: insert operation
-    ulint length = 2000000;
+    ulint length = 1000000;
     std::vector<ulint> entries = prepare_data(length);
 
     row_prebuilt_t *pre_built = test_insert(&index, &table, entries);
