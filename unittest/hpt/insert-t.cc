@@ -194,7 +194,8 @@ void test_create_table_index_with_primary_key(dict_index_t *index,
 
 
 row_prebuilt_t *test_insert(dict_index_t *index, dict_table_t *table,
-                            std::vector<ulint> entries) {
+                            std::vector<ulint> entries, ulint page_size,
+                            ulint bufferpool_size) {
 
     ulint *offsets = NULL;
     rec_t *rec;
@@ -353,6 +354,8 @@ row_prebuilt_t *test_insert(dict_index_t *index, dict_table_t *table,
     std::cout << "Time taken for insertion: " << (end_time - start_time) / 60
               << " m "
               << (end_time - start_time) % 60 << " s\n";
+
+    btr_cur_print_tree_structure(index, page_size, bufferpool_size);
 
     ok(err == dberr_t::DB_SUCCESS, "Insert successful\n");
     return pre_built;
@@ -1759,7 +1762,9 @@ int main(int argc __attribute__((unused)), char *argv[]) {
     plan(4);
 
     // setup
-    setup(4096, 1024 * 1024 * 100);
+    ulint page_size = 4096;
+    ulint bufferpool_size = 100;
+    setup(page_size, 1024 * 1024 * bufferpool_size);
 //    setup(); //test with default page_size 16KB, 100M bufferpool size
 
 
@@ -1772,10 +1777,10 @@ int main(int argc __attribute__((unused)), char *argv[]) {
                                              (char *) table_name);
 
     // test: insert operation
-    ulint length = 1000000;
+    ulint length = 1000;
     std::vector<ulint> entries = prepare_data(length);
 
-    row_prebuilt_t *pre_built = test_insert(&index, &table, entries);
+    row_prebuilt_t *pre_built = test_insert(&index, &table, entries, page_size, bufferpool_size);
     pre_built->index = &index;
     pre_built->index_usable = TRUE;
 

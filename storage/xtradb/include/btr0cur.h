@@ -904,6 +904,18 @@ struct btr_cur_t {
 					information of the path through
 					the tree */
 };
+/*******************************************************************//**
+ * print tree structure i.e. level, avg. fanout and number of pages
+ * on each level
+ * @param index
+ * @param page_size
+ * @param bufferpool_size
+ */
+void btr_cur_print_tree_structure(
+        dict_index_t *index,
+        ulint page_size,
+        ulint bufferpool_size
+);
 
 /** If pessimistic delete fails because of lack of file space, there
 is still a good change of success a little later.  Try this many
