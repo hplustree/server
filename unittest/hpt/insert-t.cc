@@ -194,8 +194,8 @@ void test_create_table_index_with_primary_key(dict_index_t *index,
 
 
 row_prebuilt_t *test_insert(dict_index_t *index, dict_table_t *table,
-                            std::vector<ulint> entries, ulint page_size,
-                            ulint bufferpool_size) {
+                            std::vector<ulint> entries, ulint *write_counts,
+                            ulint *read_counts) {
 
     ulint *offsets = NULL;
     rec_t *rec;
@@ -241,7 +241,7 @@ row_prebuilt_t *test_insert(dict_index_t *index, dict_table_t *table,
         mtr_start(&mtr);
 
         // convert values in bytes
-        ulint data[] = {entries[i], entries[i] * 10};
+        ulint data[] = {entries[i], entries[i] * 2};
         unsigned char arrayOfByte[9];
         int offs[2] = {0, 4};
         // header byte
@@ -355,7 +355,8 @@ row_prebuilt_t *test_insert(dict_index_t *index, dict_table_t *table,
               << " m "
               << (end_time - start_time) % 60 << " s\n";
 
-    btr_cur_print_tree_structure(index, page_size, bufferpool_size);
+    *write_counts = disk_write_counts;
+    *read_counts = disk_read_counts;
 
     ok(err == dberr_t::DB_SUCCESS, "Insert successful\n");
     return pre_built;
@@ -1739,7 +1740,7 @@ void test_search(row_prebuilt_t *pre_built, std::vector<ulint> entries) {
         for (ulint j = 0; j < key_len; j++)
             value2 |= buf[j + key_len] << (8 * (3 - j));
 
-        ut_ad(value1 == entries[i] && value2 == entries[i] * 10);
+        ut_ad(value1 == entries[i] && value2 == entries[i] * 2);
         count++;
 
     }
@@ -1753,6 +1754,28 @@ void test_search(row_prebuilt_t *pre_built, std::vector<ulint> entries) {
     ok(ret == dberr_t::DB_SUCCESS, "Read successful\n");
 
 }
+
+
+void print_summary(dict_index_t *index, ulint page_size,
+                   ulint bufferpool_size, ulint size,
+                   ulint write_counts, ulint read_counts) {
+    FILE *fp;
+    fp = fopen("summary.txt", "w");
+    fprintf(fp, "**************** Summary ******************\n\n");
+    fprintf(fp, "Page size : %lu\n", page_size);
+    fprintf(fp, "Bufferpool size : %luMb\n", bufferpool_size);
+
+    fprintf(fp, "\nInsert operation: \n");
+    fprintf(fp, "Disk write count: %lu\n", write_counts);
+    fprintf(fp, "Disk read count: %lu\n", read_counts);
+
+    fprintf(fp, "\nRead operation: \n");
+    fprintf(fp, "Disk write count: %lu\n", disk_write_counts - write_counts);
+    fprintf(fp, "Disk read count: %lu\n", disk_read_counts - read_counts);
+
+    btr_cur_print_tree_structure(fp, index, size);
+}
+
 
 int main(int argc __attribute__((unused)), char *argv[]) {
 
@@ -1772,20 +1795,26 @@ int main(int argc __attribute__((unused)), char *argv[]) {
     const char *table_name = "test";
     dict_index_t index;
     dict_table_t table;
+    ulint read_counts = 0;
+    ulint write_counts = 0;
+
 //    test_create_table_index(&index, &table, (char *) table_name);
     test_create_table_index_with_primary_key(&index, &table,
                                              (char *) table_name);
 
     // test: insert operation
-    ulint length = 1000;
+    ulint length = 15000000;
     std::vector<ulint> entries = prepare_data(length);
 
-    row_prebuilt_t *pre_built = test_insert(&index, &table, entries, page_size, bufferpool_size);
+    row_prebuilt_t *pre_built = test_insert(&index, &table, entries,
+                                            &write_counts, &read_counts);
     pre_built->index = &index;
     pre_built->index_usable = TRUE;
 
     test_search(pre_built, entries);
 
+    print_summary(pre_built->index, page_size, bufferpool_size,
+                  entries.size(), write_counts, read_counts);
 
     destroy();
 

@@ -6397,14 +6397,15 @@ btr_rec_copy_externally_stored_field(
 /*******************************************************************//**
  * print tree structure i.e. level, avg. fanout and number of pages
  * on each level
+ * @param fp
  * @param index
- * @param page_size
- * @param bufferpool_size
+ * @param entries_size
  */
 void btr_cur_print_tree_structure(
+        FILE*        fp,
         dict_index_t *index,
-        ulint           page_size,
-        ulint           bufferpool_size)
+        ulint        entries_size
+       )
 {
     page_t      *root;
     mtr_t       mtr;
@@ -6415,13 +6416,9 @@ void btr_cur_print_tree_structure(
     ulint       height;
     ulint       n_pages;
     ulint       n_recs;
-    ulint       rec_length;
+    float       rec_length;
 
-    FILE *fp;
-    fp = fopen("structure.txt", "w");
     fprintf(fp, "\n******************* Tree Structure *******************\n");
-    fprintf(fp, "page size : %lu\n", page_size);
-    fprintf(fp, "bufferpool size : %luMb\n", bufferpool_size);
     fprintf(fp, "Level|\tAverage Fanout|\tNum. of pages|\tRecord length\n");
 
     mtr_start(&mtr);
@@ -6443,11 +6440,10 @@ void btr_cur_print_tree_structure(
 
     height = btr_page_get_level(root, mtr);
     n_recs = page_get_n_recs(root);
-    rec_length = strlen((const char *) page_rec_get_next(
-            page_get_infimum_rec(root)));
+    rec_length = (float)(page_get_data_size(root))/n_recs;
     mtr_commit(&mtr);
 
-    fprintf(fp, "%5lu|%16lu|%14d|%15lu\n", height, n_recs, 1, rec_length);
+    fprintf(fp, "%5lu|%16lu|%14d|%15f\n", height, n_recs, 1, rec_length);
 
     if (height == 0) {
         fprintf(fp, "******************************************************\n\n");
@@ -6456,33 +6452,44 @@ void btr_cur_print_tree_structure(
 
 
     for (lint i = height - 1; i >= 0; i--) {
-        n_recs = 0;
-        n_pages = 0;
 
         mtr_start(&mtr);
         btr_cur_open_at_index_side(true, index, BTR_MODIFY_TREE,
                                    &cursor, i, &mtr);
         block = page_cur_get_block(btr_cur_get_page_cur(&cursor));
         page = buf_block_get_frame(block);
-        rec_length = strlen(reinterpret_cast<const char *>(page_rec_get_next(
-                page_get_infimum_rec(page))));
+        rec_length = (float) (page_get_data_size(page)) / page_get_n_recs(page);
 
-        loop:
-        n_recs += page_get_n_recs(page);
-        n_pages += 1;
+        if (i == 0) {
+            n_pages = n_recs;
+            n_recs = entries_size;
+            fprintf(fp, "%5lu|%16f|%14lu|%15f\n", i, (float) (n_recs) / n_pages,
+                    n_pages, rec_length);
+
+            mtr_commit(&mtr);
+
+        } else {
+            n_recs = 0;
+            n_pages = 0;
+
+            loop:
+            n_recs += page_get_n_recs(page);
+            n_pages += 1;
 //        printf("\n%lu, %lu\n", n_pages, n_recs);
 
-        next_page = btr_page_get_next(page, &mtr);
-        if (next_page != FIL_NULL) {
-            page = buf_block_get_frame(
-                    buf_page_get(index->space, 0, next_page, RW_X_LATCH, &mtr));
-            goto loop;
+            next_page = btr_page_get_next(page, &mtr);
+            if (next_page != FIL_NULL) {
+                page = buf_block_get_frame(
+                        buf_page_get(index->space, 0, next_page, RW_X_LATCH,
+                                     &mtr));
+                goto loop;
+            }
+
+            fprintf(fp, "%5lu|%16f|%14lu|%15f\n", i, (float) (n_recs) / n_pages,
+                    n_pages, rec_length);
+
+            mtr_commit(&mtr);
         }
-
-        fprintf(fp, "%5lu|%16f|%14lu|%15lu\n", i, (float) (n_recs / n_pages),
-                n_pages, rec_length);
-
-        mtr_commit(&mtr);
     }
 
     fprintf(fp, "******************************************************\n\n");

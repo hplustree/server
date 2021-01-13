@@ -2341,6 +2341,9 @@ buf_pool_mutex_exit(
 /*================*/
 	buf_pool_t*	buf_pool); /*!< in: buffer pool */
 
+extern ulint disk_read_counts;
+extern ulint disk_write_counts;
+
 #ifndef UNIV_NONINL
 #include "buf0buf.ic"
 #endif

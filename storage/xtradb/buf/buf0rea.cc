@@ -52,6 +52,7 @@ read-ahead is not done: this is to prevent flooding the buffer pool with
 i/o-fixed buffer blocks */
 #define BUF_READ_AHEAD_PEND_LIMIT	2
 
+ulint disk_read_counts=0;
 /********************************************************************//**
 Unfixes the pages, unlatches the page,
 removes it from page_hash and removes it from LRU. */
@@ -145,7 +146,9 @@ buf_read_page_low(
 	trx_t*		trx = NULL,
 	bool		should_buffer = false)
 {
-	buf_page_t*	bpage;
+	disk_read_counts++;
+
+    buf_page_t*	bpage;
 	ulint		wake_later;
 	ibool		ignore_nonexistent_pages;
 

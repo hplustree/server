@@ -74,6 +74,7 @@ UNIV_INTERN mysql_pfs_key_t buf_page_cleaner_thread_key;
 UNIV_INTERN mysql_pfs_key_t buf_lru_manager_thread_key;
 #endif /* UNIV_PFS_THREAD */
 
+ulint disk_write_counts=0;
 /* @} */
 
 /******************************************************************//**
@@ -888,7 +889,9 @@ buf_flush_write_block_low(
 	buf_flush_t	flush_type,	/*!< in: type of flush */
 	bool		sync)		/*!< in: true if sync IO request */
 {
-	fil_space_t*	space = fil_space_acquire_for_io(bpage->space);
+    disk_write_counts++;
+
+    fil_space_t*	space = fil_space_acquire_for_io(bpage->space);
 	if (!space) {
 		return;
 	}

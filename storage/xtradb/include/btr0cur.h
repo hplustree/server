@@ -907,14 +907,14 @@ struct btr_cur_t {
 /*******************************************************************//**
  * print tree structure i.e. level, avg. fanout and number of pages
  * on each level
+ * @param fp
  * @param index
- * @param page_size
- * @param bufferpool_size
+ * @param entries_size
  */
 void btr_cur_print_tree_structure(
+        FILE* fp,
         dict_index_t *index,
-        ulint page_size,
-        ulint bufferpool_size
+        ulint entries_size
 );
 
 /** If pessimistic delete fails because of lack of file space, there
