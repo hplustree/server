@@ -3539,16 +3539,16 @@ btr_insert_into_right_sibling(
             flags, index, level + 1, node_ptr,
             __FILE__, __LINE__, mtr, next_father_cursor);
 
-    if (&father_cursor.page_cur.block->page.offset ==
+    if (&father_cursor.page_cur.block->page.offset !=
         &next_father_cursor.page_cur.block->page.offset) {
 
         /* We only check for compression when block and next block
          * belong to same father */
 
-        if (!compressed) {
-            btr_cur_compress_if_useful(&next_father_cursor, FALSE, mtr);
-        }
-    } else {
+//        if (!compressed) {
+//            btr_cur_compress_if_useful(&next_father_cursor, FALSE, mtr);
+//        }
+//    } else {
 
         /* If the parent of block and next block are different,
          * then we have updated left most node pointer of the father

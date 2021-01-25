@@ -7,6 +7,7 @@
 #include <que0que.h>
 #include <trx0trx.h>
 #include "utl_index.h"
+#include "utl_table.h"
 #include "../../storage/xtradb/row/row0mysql.cc"
 #include "../../storage/xtradb/row/row0ins.cc"
 #include "../../storage/xtradb/row/row0sel.cc"
@@ -364,7 +365,7 @@ row_prebuilt_t *test_insert(dict_index_t *index, dict_table_t *table,
 
 std::vector<ulint> prepare_data(ulint length) {
     // generate random numbers
-    ulint seed = 42;
+    ulint seed = 40;
     std::vector<ulint> entries(length);
 
     for (ulint i = 0; i < length; i++) {
@@ -1803,7 +1804,7 @@ int main(int argc __attribute__((unused)), char *argv[]) {
                                              (char *) table_name);
 
     // test: insert operation
-    ulint length = 15000000;
+    ulint length = 25000000;
     std::vector<ulint> entries = prepare_data(length);
 
     row_prebuilt_t *pre_built = test_insert(&index, &table, entries,
@@ -1820,7 +1821,7 @@ int main(int argc __attribute__((unused)), char *argv[]) {
 
     // delete the created tablespace file
     // always run it after destruction
-// TODO: uncomment this ->   delete_tablespace_ibd_file((char *) table_name);
+    delete_tablespace_ibd_file((char *) table_name);
 
     my_end(0);
     return exit_status();
